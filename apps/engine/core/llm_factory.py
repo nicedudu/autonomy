@@ -106,7 +106,11 @@ class LLMFactory:
         return LLMResponse(
             content=response.choices[0].message.content,
             model=model,
-            usage=response.usage.model_dump(),
+            usage={
+                "prompt_tokens": response.usage.prompt_tokens,
+                "completion_tokens": response.usage.completion_tokens,
+                "total_tokens": response.usage.total_tokens
+            },
             finish_reason=response.choices[0].finish_reason
         )
 

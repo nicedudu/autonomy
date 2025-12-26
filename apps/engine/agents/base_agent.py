@@ -1,19 +1,21 @@
 import time
 from typing import List, Dict, Any, Optional
+from jinja2 import Template
 from pydantic import BaseModel
 
+from core.llm_factory import LLMFactory
+
 class Message(BaseModel):
-    """Agent间通信消息模型"""
+    """智能体间通信消息模型"""
     sender: str
     recipient: str
     subject: str
     content: Dict[str, Any]
     timestamp: float = time.time()
-    message_type: str = "private"  # private, broadcast, meeting
-    meeting_id: Optional[str] = None
+    message_type: str = "private"
 
 class ToolCall(BaseModel):
-    """工具调用模型"""
+    """工具调用请求模型"""
     tool_name: str
     parameters: Dict[str, Any]
     thought: str
@@ -26,94 +28,107 @@ class ActionResult(BaseModel):
     error: Optional[str] = None
     execution_time: float
 
-from core.llm_factory import LLMFactory
-from core.prompt_manager import PromptManager
-
 class BaseAgent:
     """
     智能体通用基础类。
-    抽象了消息通信、模型交互、工具调用及记忆管理的核心逻辑。
+    支持单轮任务执行与多轮持续对话。
     """
     
     def __init__(self, agent_id: str, agent_type: str, name: str, tools: List[str] = None):
         """
-        初始化智能体。
-
-        Args:
-            agent_id: 数据库唯一标识。
-            agent_type: 职能类型标识。
-            name: 智能体显示名称。
-            tools: 可调用的工具名称列表。
+        初始化智能体，加载配置并初始化对话历史。
         """
         self.agent_id = agent_id
         self.agent_type = agent_type
         self.name = name
         self.tools = tools or []
         self.memory = []
+        self.long_term_memory = None
+        self.communication_bus = None
+        self.reasoning_engine = None
         self.llm_factory = LLMFactory()
         
-        # 加载智能体核心配置
+        # 维护对话上下文
+        self.chat_history: List[Dict[str, str]] = []
+        
+        # 加载核心提示词配置
         config = self.llm_factory.get_config(self.agent_id)
         self.system_prompt = config["system_prompt"]
         self.user_prompt_template = config["user_prompt"]
 
-    def ask_llm(self, prompt: str, system_override: Optional[str] = None) -> str:
+    def run(self, task_params: Dict[str, Any], clear_history: bool = True) -> str:
         """
-        向大语言模型发起单次推理请求。
-
-        Args:
-            prompt: 用户指令内容。
-            system_override: 可选的系统提示词覆盖。
-
-        Returns:
-            str: 模型生成的文本内容。
+        开启或重置一个基于模板的任务。
         """
-        messages = [
-            {"role": "system", "content": system_override or self.system_prompt},
-            {"role": "user", "content": prompt}
-        ]
+        if clear_history:
+            self.chat_history = []
+
+        try:
+            rendered_user_prompt = Template(self.user_prompt_template).render(**task_params)
+        except Exception as e:
+            raise RuntimeError(f"智能体 '{self.name}' 提示词渲染失败: {e}")
+
+        return self.ask_llm(rendered_user_prompt)
+
+    def chat(self, user_input: str) -> str:
+        """
+        在当前任务上下文中继续对话。
+        """
+        return self.ask_llm(user_input)
+
+    def ask_llm(self, prompt: str) -> str:
+        """
+        统一的模型请求处理，自动维护对话历史并打印详细日志。
+        """
+        # 构建消息序列
+        messages = [{"role": "system", "content": self.system_prompt}]
+        messages.extend(self.chat_history)
+        messages.append({"role": "user", "content": prompt})
+
+        # --- 生产级调试日志 ---
+        print(f"\n{'='*20} 发送至 LLM 的完整 Context {'='*20}")
+        for msg in messages:
+            role = msg["role"].upper()
+            content = msg["content"]
+            # 简单截断过长的内容以便阅读
+            display_content = content if len(content) < 500 else content[:500] + "..."
+            print(f"[{role}]:\n{display_content}\n{'-'*40}")
+        print(f"{ '='*60}\n")
+
+        # 发起调用
         response = self.llm_factory.call_llm(self.agent_id, messages)
         
-        # 统计模型使用量
-        self.memory.append({
-            "type": "llm_usage",
-            "model": response.model,
-            "usage": response.usage,
-            "timestamp": time.time()
-        })
-        
+        # 更新历史记录
+        self.chat_history.append({"role": "user", "content": prompt})
+        self.chat_history.append({"role": "assistant", "content": response.content})
+
         return response.content
 
+    # === 基础设施方法 ===
+
     def set_memory_system(self, memory_system):
-        """设置长期记忆系统"""
         self.long_term_memory = memory_system
     
     def set_communication_bus(self, communication_bus):
-        """设置通信总线"""
         self.communication_bus = communication_bus
     
     def set_reasoning_engine(self, reasoning_engine):
-        """设置思考引擎"""
         self.reasoning_engine = reasoning_engine
     
     def receive_message(self, message: Message):
-        """接收消息"""
-        print(f"[{self.name}] 收到来自 {message.sender} 的消息: {message.subject}")
         self.memory.append({
-            "type": "message",
-            "content": message,
+            "type": "received_message",
+            "content": message.model_dump(),
             "timestamp": time.time()
         })
         self.process_message(message)
     
     def process_message(self, message: Message):
-        """处理消息（子类实现）"""
         pass
     
     def send_message(self, recipient: str, subject: str, content: Dict[str, Any], message_type: str = "private"):
-        """发送消息"""
         if not self.communication_bus:
-            raise Exception("通信总线未初始化")
+            raise RuntimeError("通信总线未初始化。" )
         
         message = Message(
             sender=self.agent_id,
@@ -122,119 +137,30 @@ class BaseAgent:
             content=content,
             message_type=message_type
         )
-        
-        self.memory.append({
-            "type": "sent_message",
-            "content": message,
-            "timestamp": time.time()
-        })
-        
         return self.communication_bus.send_message(message)
     
-    def broadcast_message(self, subject: str, content: Dict[str, Any]):
-        """广播消息"""
-        return self.send_message("all", subject, content, "broadcast")
-    
     def call_tool(self, tool_name: str, parameters: Dict[str, Any], thought: str = "") -> ActionResult:
-        """调用工具"""
         if tool_name not in self.tools:
-            raise Exception(f"工具 {tool_name} 不可用")
+            raise ValueError(f"工具 '{tool_name}' 未授权。" )
         
-        # 实际工具调用将通过工具管理器进行，这里先返回模拟结果
-        print(f"[{self.name}] 调用工具: {tool_name}, 参数: {parameters}, 思考: {thought}")
-        
-        # 模拟工具执行
-        result = {
-            "tool_name": tool_name,
-            "success": True,
-            "result": f"{tool_name} 执行成功，参数: {parameters}",
-            "execution_time": 0.5
-        }
-        
-        action_result = ActionResult(**result)
-        
-        self.memory.append({
-            "type": "tool_call",
-            "tool_name": tool_name,
-            "parameters": parameters,
-            "thought": thought,
-            "result": action_result,
-            "timestamp": time.time()
-        })
-        
-        self.last_action = {
-            "tool_name": tool_name,
-            "parameters": parameters,
-            "thought": thought
-        }
-        self.last_observation = action_result
-        
-        return action_result
-    
+        result = ActionResult(
+            tool_name=tool_name,
+            success=True,
+            result=f"已模拟执行 {tool_name}",
+            execution_time=0.1
+        )
+        return result
+
     def think(self, task: str, context: Dict[str, Any] = None) -> List[ToolCall]:
-        """思考过程（子类实现）"""
-        raise NotImplementedError("子类必须实现think方法")
-    
-    def act(self, tool_calls: List[ToolCall]) -> List[ActionResult]:
-        """执行动作"""
-        results = []
-        for tool_call in tool_calls:
-            result = self.call_tool(
-                tool_name=tool_call.tool_name,
-                parameters=tool_call.parameters,
-                thought=tool_call.thought
-            )
-            results.append(result)
-        return results
-    
-    def observe(self, results: List[ActionResult]):
-        """观察结果"""
-        for result in results:
-            print(f"[{self.name}] 观察到工具结果: {result.tool_name} - {'成功' if result.success else '失败'}")
-    
-    def plan(self, task: str) -> List[Dict[str, Any]]:
-        """制定计划（子类实现）"""
-        raise NotImplementedError("子类必须实现plan方法")
+        raise NotImplementedError("子类必须实现 think 方法。" )
     
     def execute(self, task: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
-        """执行任务的主循环"""
-        print(f"[{self.name}] 开始执行任务: {task}")
-        
-        # 1. 思考
         tool_calls = self.think(task, context)
-        
-        # 2. 执行
-        results = self.act(tool_calls)
-        
-        # 3. 观察
-        self.observe(results)
-        
-        # 4. 反思
-        self.reflect(task, results)
-        
-        return {
-            "task": task,
-            "success": all(result.success for result in results),
-            "results": [result.model_dump() for result in results],
-            "agent_id": self.agent_id
-        }
-    
-    def reflect(self, task: str, results: List[ActionResult]):
-        """反思过程（可选，子类实现）"""
-        pass
-    
-    def self_improve(self, feedback: Dict[str, Any]):
-        """自我改进（可选，子类实现）"""
-        pass
-    
+        results = [self.call_tool(tc.tool_name, tc.parameters, tc.thought) for tc in tool_calls]
+        return {"task": task, "results": [r.model_dump() for r in results]}
+
     def get_status(self) -> Dict[str, Any]:
-        """获取Agent状态"""
         return {
             "agent_id": self.agent_id,
-            "agent_type": self.agent_type,
-            "name": self.name,
-            "tools": self.tools,
-            "memory_count": len(self.memory),
-            "last_action": self.last_action,
-            "last_observation": self.last_observation.model_dump() if self.last_observation else None
+            "history_turns": len(self.chat_history) // 2
         }
