@@ -56,7 +56,7 @@ export default function ProviderManagement() {
 
     const getVendorName = (url: string) => {
         try {
-            if (!url) return "未知厂商";
+            if (!url) return "未知供应商";
             const hostname = new URL(url).hostname;
             const parts = hostname.split(".");
             if (parts.length >= 2) {
@@ -84,6 +84,7 @@ export default function ProviderManagement() {
             api_base: selectedProvider.api_base,
             api_token: selectedProvider.api_token,
             type: selectedProvider.type || "openai",
+            icon_url: selectedProvider.icon_url,
             supported_models: selectedProvider.supported_models || [],
         });
 
@@ -154,7 +155,7 @@ export default function ProviderManagement() {
                             size={13}
                         />
                         <Input
-                            placeholder="搜索厂商..."
+                            placeholder="搜索供应商..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             className="w-full pl-8 h-8 text-xs! bg-background/50 border-border shadow-none"
@@ -169,6 +170,7 @@ export default function ProviderManagement() {
                                 api_base: "",
                                 api_token: "",
                                 type: "openai",
+                                icon_url: "",
                                 supported_models: [],
                             })
                         }
@@ -193,15 +195,29 @@ export default function ProviderManagement() {
                                     }`}
                                 >
                                     <div
-                                        className={`w-8 h-8 rounded-lg flex items-center justify-center text-white font-black text-xs shrink-0 uppercase ${
-                                            vendorName.includes("anthropic")
-                                                ? "bg-orange-500"
-                                                : vendorName.includes("openai")
-                                                ? "bg-green-600"
-                                                : "bg-blue-500"
+                                        className={`w-8 h-8 rounded-lg flex items-center justify-center overflow-hidden shrink-0 ${
+                                            !p.icon_url
+                                                ? vendorName.includes(
+                                                      "anthropic"
+                                                  )
+                                                    ? "bg-orange-500 text-white font-black text-xs uppercase"
+                                                    : vendorName.includes(
+                                                          "openai"
+                                                      )
+                                                    ? "bg-green-600 text-white font-black text-xs uppercase"
+                                                    : "bg-blue-500 text-white font-black text-xs uppercase"
+                                                : ""
                                         }`}
                                     >
-                                        {vendorName.charAt(0)}
+                                        {p.icon_url ? (
+                                            <img
+                                                src={p.icon_url}
+                                                alt={p.name}
+                                                className="w-full h-full object-cover"
+                                            />
+                                        ) : (
+                                            vendorName.charAt(0)
+                                        )}
                                     </div>
                                     <div className="truncate flex-1">
                                         <div
@@ -248,7 +264,7 @@ export default function ProviderManagement() {
                             </div>
                         </header>
 
-                        <ScrollArea className="flex-1 bg-background p-6">
+                        <ScrollArea className="flex-1 bg-background p-6 h-full overflow-auto">
                             <div className="max-w-4xl mx-auto space-y-10 pb-12">
                                 {/* 1. Base Config */}
                                 <section className="space-y-4">
@@ -266,11 +282,12 @@ export default function ProviderManagement() {
                                         <div className="grid grid-cols-12 gap-6">
                                             <div className="space-y-2 col-span-6">
                                                 <Label className="text-xs font-black text-muted-foreground uppercase tracking-widest">
-                                                    厂商名称
+                                                    供应商名称
                                                 </Label>
                                                 <Input
                                                     value={
-                                                        selectedProvider.name
+                                                        selectedProvider.name ||
+                                                        ""
                                                     }
                                                     onChange={(e) =>
                                                         setSelectedProvider({
@@ -289,7 +306,8 @@ export default function ProviderManagement() {
                                                 </Label>
                                                 <Select
                                                     value={
-                                                        selectedProvider.type
+                                                        selectedProvider.type ||
+                                                        "openai"
                                                     }
                                                     onValueChange={(val) =>
                                                         setSelectedProvider({
@@ -314,11 +332,33 @@ export default function ProviderManagement() {
                                             <div className="space-y-2 col-span-12">
                                                 <Label className="text-xs font-black text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
                                                     <Globe2 size={10} />{" "}
+                                                    供应商图标
+                                                </Label>
+                                                <Input
+                                                    value={
+                                                        selectedProvider.icon_url ||
+                                                        ""
+                                                    }
+                                                    onChange={(e) =>
+                                                        setSelectedProvider({
+                                                            ...selectedProvider,
+                                                            icon_url:
+                                                                e.target.value,
+                                                        })
+                                                    }
+                                                    placeholder="https://..."
+                                                    className="bg-background text-sm font-mono h-9 shadow-none"
+                                                />
+                                            </div>
+                                            <div className="space-y-2 col-span-12">
+                                                <Label className="text-xs font-black text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
+                                                    <Globe2 size={10} />{" "}
                                                     接口地址 (Base URL)
                                                 </Label>
                                                 <Input
                                                     value={
-                                                        selectedProvider.api_base
+                                                        selectedProvider.api_base ||
+                                                        ""
                                                     }
                                                     onChange={(e) =>
                                                         setSelectedProvider({
@@ -333,13 +373,14 @@ export default function ProviderManagement() {
                                             </div>
                                             <div className="space-y-2 col-span-12">
                                                 <Label className="text-xs font-black text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
-                                                    <Key size={10} /> 全局 API
-                                                    密钥 (Token)
+                                                    <Key size={10} /> API 密钥
+                                                    (Token)
                                                 </Label>
                                                 <Input
                                                     type="password"
                                                     value={
-                                                        selectedProvider.api_token
+                                                        selectedProvider.api_token ||
+                                                        ""
                                                     }
                                                     onChange={(e) =>
                                                         setSelectedProvider({
@@ -461,7 +502,9 @@ export default function ProviderManagement() {
                                                                 ID)
                                                             </Label>
                                                             <Input
-                                                                value={model}
+                                                                value={
+                                                                    model || ""
+                                                                }
                                                                 onChange={(e) =>
                                                                     handleUpdateModel(
                                                                         idx,
@@ -526,7 +569,7 @@ export default function ProviderManagement() {
                     </>
                 ) : (
                     <div className="h-full flex flex-col items-center justify-center text-muted-foreground/30 font-black uppercase tracking-[0.2em] text-sm">
-                        请选择左侧厂商进行配置
+                        请选择左侧供应商进行配置
                     </div>
                 )}
             </main>
