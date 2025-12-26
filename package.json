@@ -1,0 +1,18 @@
+{
+  "name": "autonomy",
+  "version": "1.0.0",
+  "description": "Autonomy - Autonomous AI E-commerce Matrix",
+  "private": true,
+  "scripts": {
+    "dev:engine": "cd apps/engine && source .venv/bin/activate && uvicorn core.api_server:app --reload --port 8000",
+    "dev:web": "pnpm --filter web run dev",
+    "dev:admin": "pnpm --filter admin run dev",
+    "dev": "concurrently \"npm run dev:engine\" \"npm run dev:web\" \"npm run dev:admin\"",
+    "demo": "cd apps/engine && source .venv/bin/activate && python run_autonomy_mvp.py",
+    "install:all": "pnpm install && cd apps/engine && uv pip install -r requirements.txt"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "supabase": "^2.70.5"
+  }
+}
