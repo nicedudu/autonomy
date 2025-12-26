@@ -157,7 +157,7 @@ export default function ProviderManagement() {
                             placeholder="搜索厂商..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full pl-8 h-8 text-xs! bg-background/50 border-border"
+                            className="w-full pl-8 h-8 text-xs! bg-background/50 border-border shadow-none"
                         />
                     </div>
                     <Button
@@ -165,8 +165,8 @@ export default function ProviderManagement() {
                         variant="default"
                         onClick={() =>
                             setSelectedProvider({
-                                name: "新建厂商",
-                                api_base: "https://api.example.com/v1",
+                                name: "",
+                                api_base: "",
                                 api_token: "",
                                 type: "openai",
                                 supported_models: [],
@@ -279,7 +279,7 @@ export default function ProviderManagement() {
                                                                 .value,
                                                         })
                                                     }
-                                                    className="bg-background text-sm h-9"
+                                                    className="bg-background text-sm h-9 shadow-none"
                                                     placeholder="如: OpenAI, DeepSeek"
                                                 />
                                             </div>
@@ -298,7 +298,7 @@ export default function ProviderManagement() {
                                                         })
                                                     }
                                                 >
-                                                    <SelectTrigger className="bg-background text-sm border-border h-9 w-full">
+                                                    <SelectTrigger className="bg-background text-sm border-border h-9 w-full shadow-none">
                                                         <SelectValue />
                                                     </SelectTrigger>
                                                     <SelectContent className="border-border">
@@ -328,7 +328,7 @@ export default function ProviderManagement() {
                                                         })
                                                     }
                                                     placeholder="https://api.openai.com/v1"
-                                                    className="bg-background text-sm font-mono h-9"
+                                                    className="bg-background text-sm font-mono h-9 shadow-none"
                                                 />
                                             </div>
                                             <div className="space-y-2 col-span-12">
@@ -349,7 +349,7 @@ export default function ProviderManagement() {
                                                         })
                                                     }
                                                     placeholder="sk-..."
-                                                    className="bg-background text-sm font-mono h-9"
+                                                    className="bg-background text-sm font-mono h-9 shadow-none"
                                                 />
                                             </div>
                                         </div>
@@ -469,7 +469,7 @@ export default function ProviderManagement() {
                                                                             .value
                                                                     )
                                                                 }
-                                                                className="text-sm font-mono h-9 bg-background"
+                                                                className="text-sm font-mono h-9 bg-background shadow-none"
                                                                 placeholder="例如: gpt-4o"
                                                             />
                                                             <p className="text-[10px] text-muted-foreground">

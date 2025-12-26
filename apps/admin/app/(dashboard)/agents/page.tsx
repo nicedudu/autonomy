@@ -130,7 +130,7 @@ export default function AdminAgentsThemeAligned() {
                         />
                         <Input
                             placeholder="搜索智能体..."
-                            className="w-full pl-8 h-8 text-xs! bg-background/50 border-border"
+                            className="w-full pl-8 h-8 text-xs! bg-background/50 border-border shadow-none"
                         />
                     </div>
                 </div>
@@ -222,7 +222,7 @@ export default function AdminAgentsThemeAligned() {
                                                         })
                                                     }
                                                 >
-                                                    <SelectTrigger className="w-full bg-background border-border h-9 text-sm">
+                                                    <SelectTrigger className="w-full bg-background border-border h-9 text-sm shadow-none">
                                                         <SelectValue placeholder="选择模型" />
                                                     </SelectTrigger>
                                                     <SelectContent className="border-border">
@@ -289,7 +289,7 @@ export default function AdminAgentsThemeAligned() {
                                                 system_prompt: e.target.value,
                                             })
                                         }
-                                        className="w-full h-48 bg-background border-border rounded-xl p-4 text-sm leading-relaxed font-mono shadow-sm"
+                                        className="w-full h-48 bg-background border-border rounded-xl p-4 text-sm leading-relaxed font-mono shadow-none"
                                         placeholder="在此确立智能体的身份协议与行为准则..."
                                     />
                                 </section>
@@ -312,7 +312,7 @@ export default function AdminAgentsThemeAligned() {
                                         onChange={(e) =>
                                             updatePromptLocal(e.target.value)
                                         }
-                                        className="w-full h-96 bg-background border-border rounded-xl p-4 text-sm leading-relaxed font-mono shadow-sm"
+                                        className="w-full h-96 bg-background border-border rounded-xl p-4 text-sm leading-relaxed font-mono shadow-none"
                                         placeholder="在此定义具体的执行任务与操作流程..."
                                     />
                                 </section>
