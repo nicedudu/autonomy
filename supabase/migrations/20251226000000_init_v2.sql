@@ -7,7 +7,7 @@ CREATE TABLE llm_providers (
     name TEXT UNIQUE NOT NULL,        -- 如 'OpenAI', 'Anthropic'
     type TEXT NOT NULL DEFAULT 'openai', -- 协议类型: openai, anthropic, gemini
     api_base TEXT,                    -- API 基址
-    api_key TEXT,                     -- API 密钥
+    api_token TEXT,                   -- API 密钥 (Token)
     icon_url TEXT,                    -- 供应商图标 URL
     supported_models TEXT[] DEFAULT '{}',
     created_at TIMESTAMPTZ DEFAULT NOW(),
