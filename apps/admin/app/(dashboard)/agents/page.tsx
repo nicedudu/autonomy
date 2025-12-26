@@ -289,7 +289,7 @@ export default function AdminAgentsThemeAligned() {
                                                 system_prompt: e.target.value,
                                             })
                                         }
-                                        className="w-full h-64 bg-background border-border rounded-xl p-4 text-sm leading-relaxed resize-none font-mono shadow-sm"
+                                        className="w-full h-48 bg-background border-border rounded-xl p-4 text-sm leading-relaxed font-mono shadow-sm"
                                         placeholder="在此确立智能体的身份协议与行为准则..."
                                     />
                                 </section>
@@ -302,7 +302,7 @@ export default function AdminAgentsThemeAligned() {
                                             className="text-primary"
                                         />
                                         <h3 className="text-xs font-bold uppercase tracking-wider">
-                                            任务指令 (Task Instruction)
+                                            用户提示词 (User Prompt)
                                         </h3>
                                     </div>
                                     <Textarea
@@ -312,7 +312,7 @@ export default function AdminAgentsThemeAligned() {
                                         onChange={(e) =>
                                             updatePromptLocal(e.target.value)
                                         }
-                                        className="w-full h-48 bg-background border-border rounded-xl p-4 text-sm leading-relaxed resize-none font-mono shadow-sm"
+                                        className="w-full h-96 bg-background border-border rounded-xl p-4 text-sm leading-relaxed font-mono shadow-sm"
                                         placeholder="在此定义具体的执行任务与操作流程..."
                                     />
                                 </section>
