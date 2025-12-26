@@ -18,3 +18,4 @@ requests>=2.31.0
 
 # 工具库
 tqdm>=4.65.0
+tenacity>=8.2.0

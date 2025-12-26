@@ -30,39 +30,51 @@ from core.llm_factory import LLMFactory
 from core.prompt_manager import PromptManager
 
 class BaseAgent:
-    """所有Agent的基础类"""
+    """
+    智能体通用基础类。
+    抽象了消息通信、模型交互、工具调用及记忆管理的核心逻辑。
+    """
     
     def __init__(self, agent_id: str, agent_type: str, name: str, tools: List[str] = None):
+        """
+        初始化智能体。
+
+        Args:
+            agent_id: 数据库唯一标识。
+            agent_type: 职能类型标识。
+            name: 智能体显示名称。
+            tools: 可调用的工具名称列表。
+        """
         self.agent_id = agent_id
         self.agent_type = agent_type
         self.name = name
         self.tools = tools or []
-        self.memory = []  # 短期记忆
-        self.long_term_memory = None  # 长期记忆
-        self.communication_bus = None  # 通信总线
-        self.reasoning_engine = None  # 思考引擎
-        self.llm_factory = LLMFactory() # 初始化模型工厂
-        self.prompt_manager = PromptManager() # 初始化 Prompt 管理器
-        self.last_action = None
-        self.last_observation = None
+        self.memory = []
+        self.llm_factory = LLMFactory()
         
-        # 从 Prompt 库加载 System Prompt
-        # 如果库里没有，再回退到默认值
-        self.system_prompt = self.prompt_manager.get_system_prompt(agent_type)
-        if not self.system_prompt:
-             # 回退逻辑
-             agent_config = self.llm_factory.get_agent_config(agent_type)
-             self.system_prompt = agent_config.get("system_prompt", f"You are a helpful AI Agent named {name}.")
+        # 加载智能体核心配置
+        config = self.llm_factory.get_config(self.agent_id)
+        self.system_prompt = config["system_prompt"]
+        self.user_prompt_template = config["user_prompt"]
 
     def ask_llm(self, prompt: str, system_override: Optional[str] = None) -> str:
-        """调用配置好的 LLM 进行推理"""
+        """
+        向大语言模型发起单次推理请求。
+
+        Args:
+            prompt: 用户指令内容。
+            system_override: 可选的系统提示词覆盖。
+
+        Returns:
+            str: 模型生成的文本内容。
+        """
         messages = [
             {"role": "system", "content": system_override or self.system_prompt},
             {"role": "user", "content": prompt}
         ]
-        response = self.llm_factory.call_llm(self.agent_type, messages)
+        response = self.llm_factory.call_llm(self.agent_id, messages)
         
-        # 记录 Token 使用情况到记忆中
+        # 统计模型使用量
         self.memory.append({
             "type": "llm_usage",
             "model": response.model,

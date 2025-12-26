@@ -43,7 +43,7 @@ VALUES
 ('OpenAI', 'openai', 'https://api.openai.com/v1', 'https://api.dicebear.com/7.x/initials/svg?seed=OpenAI&backgroundColor=00a67e', ARRAY['gpt-4o', 'gpt-4o-mini', 'o1-preview']),
 ('DeepSeek', 'openai', 'https://api.deepseek.com', 'https://api.dicebear.com/7.x/initials/svg?seed=DeepSeek&backgroundColor=4d6ef5', ARRAY['deepseek-chat', 'deepseek-coder']),
 ('Anthropic', 'anthropic', 'https://api.anthropic.com/v1', 'https://api.dicebear.com/7.x/initials/svg?seed=Anthropic&backgroundColor=d97706', ARRAY['claude-3-5-sonnet-20240620', 'claude-3-opus-20240229']),
-('Google', 'gemini', 'https://generativelanguage.googleapis.com', 'https://api.dicebear.com/7.x/initials/svg?seed=Google&backgroundColor=4285f4', ARRAY['gemini-1.5-pro', 'gemini-1.5-flash']),
+('Google', 'openai', 'https://generativelanguage.googleapis.com/v1beta/openai', 'https://api.dicebear.com/7.x/initials/svg?seed=Google&backgroundColor=4285f4', ARRAY['gemini-1.5-pro', 'gemini-1.5-flash']),
 ('Groq', 'openai', 'https://api.groq.com/openai/v1', 'https://api.dicebear.com/7.x/initials/svg?seed=Groq&backgroundColor=f59e0b', ARRAY['llama-3.1-70b-versatile', 'mixtral-8x7b-32768'])
 ON CONFLICT (name) DO UPDATE SET
     api_base = EXCLUDED.api_base,
@@ -60,7 +60,7 @@ VALUES
 ),
 (
   'cpo_agent', 'Alice', '选品专家', 'https://api.dicebear.com/7.x/avataaars/svg?seed=Alice&backgroundColor=ffdfbf', 'gpt-4o',
-  '你也是 Autonomy 的首席选品官 (CPO)。你拥有敏锐的市场嗅觉，擅长从社交媒体 (TikTok, Instagram) 和电商平台 (Amazon, Shopee) 挖掘潜在爆款。你的决策风格：数据驱动、前瞻性强、但也关注风险。',
+  '你是 Autonomy 的首席选品官 (CPO)。你拥有敏锐的市场嗅觉，擅长从社交媒体 (TikTok, Instagram) 和电商平台 (Amazon, Shopee) 挖掘潜在爆款。你的决策风格：数据驱动、前瞻性强、但也关注风险。',
   '针对产品 "{{ product_name }}" ，请基于当前 {{ market_region }} 市场的电商环境，给出 3 条关键的战略直觉或潜在风险提示。\n请专注于：\n1. 消费者心理变化\n2. 竞品差异化机会\n3. 宏观经济影响'
 ),
 (

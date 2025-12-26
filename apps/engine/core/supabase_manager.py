@@ -6,7 +6,8 @@ load_dotenv()
 
 class SupabaseManager:
     """
-    Supabase 管理器：负责与云端数据库进行通信。
+    Supabase 数据库交互管理器。
+    采用单例模式，提供基础的数据读取接口。
     """
     _instance = None
 
@@ -17,55 +18,47 @@ class SupabaseManager:
         return cls._instance
 
     def _init_client(self):
+        """
+        根据环境变量初始化 Supabase 客户端。
+        """
         url = os.getenv("SUPABASE_URL")
-        key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") # 建议在Engine端使用Service Role Key以获得更高效的读取权限
+        key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
         
         if not url or not key:
-            print("[SupabaseManager] WARNING: SUPABASE_URL or KEY is missing. Agent will use local config fallback.")
-            self.client = None
-        else:
-            self.client: Client = create_client(url, key)
-            print(f"[SupabaseManager] Connected to: {url}")
-
-    def get_agent_config(self, agent_id: str):
-        """从 agents 表中获取指定 Agent 的实时配置"""
-        if not self.client:
-            return None
+            raise EnvironmentError("环境变量缺失: SUPABASE_URL 或 SUPABASE_SERVICE_ROLE_KEY 未配置。")
         
+        self.client: Client = create_client(url, key)
+
+    def get_agent_config(self, identifier: str):
+        """
+        读取智能体详情及关联的供应商信息。
+
+        Args:
+            identifier: 智能体标识符。
+
+        Returns:
+            Dict or None: 数据库记录对象。
+        """
         try:
-            response = self.client.table("agents").select("*").eq("agent_id", agent_id).execute()
-            if response.data and len(response.data) > 0:
-                return response.data[0]
-            return None
+            response = self.client.table("agents").select("*, llm_providers(*)").eq("identifier", identifier).execute()
+            return response.data[0] if response.data else None
         except Exception as e:
-            print(f"[SupabaseManager] Error fetching config for {agent_id}: {e}")
+            print(f"[Supabase] 读取智能体 '{identifier}' 失败: {e}")
             return None
 
-    def get_provider_config(self, provider_name: str):
-        """获取模型供应商的默认全局配置"""
-        if not self.client:
-            return None
-        try:
-            response = self.client.table("llm_providers").select("*").ilike("name", provider_name).execute()
-            if response.data:
-                return response.data[0]
-            return None
-        except Exception as e:
-            print(f"[SupabaseManager] Error fetching provider {provider_name}: {e}")
-            return None
-        except Exception as e:
-            print(f"[SupabaseManager] Error fetching config for {agent_id}: {e}")
-            return None
+    def get_provider_config(self, provider_id: str):
+        """
+        获取指定 ID 的供应商配置。
 
-    def get_prompt_template(self, slug: str):
-        """获取指定的 Prompt 模板内容"""
-        if not self.client:
-            return None
+        Args:
+            provider_id: 供应商 UUID。
+
+        Returns:
+            Dict or None: 数据库记录对象。
+        """
         try:
-            response = self.client.table("prompt_library").select("template").eq("slug", slug).execute()
-            if response.data:
-                return response.data[0]["template"]
-            return None
+            response = self.client.table("llm_providers").select("*").eq("id", provider_id).execute()
+            return response.data[0] if response.data else None
         except Exception as e:
-            print(f"[SupabaseManager] Error fetching prompt {slug}: {e}")
+            print(f"[Supabase] 读取供应商 '{provider_id}' 失败: {e}")
             return None
