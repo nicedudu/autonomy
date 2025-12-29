@@ -12,6 +12,12 @@ import { Card } from "@autonomy/ui/components/card";
 import { ScrollArea } from "@autonomy/ui/components/scroll-area";
 import { Separator } from "@autonomy/ui/components/separator";
 import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from "@autonomy/ui/components/tooltip";
+import {
     AtSign,
     Clock,
     Command,
@@ -27,12 +33,6 @@ import {
     StopCircle,
     Zap,
 } from "lucide-react";
-import {
-    Tooltip,
-    TooltipContent,
-    TooltipProvider,
-    TooltipTrigger,
-} from "@autonomy/ui/components/tooltip";
 import { useEffect, useRef, useState } from "react";
 
 interface Message {
@@ -340,12 +340,22 @@ export default function ExecutionConsole() {
                                     {msg.role === "assistant" ? (
                                         <div className="space-y-3">
                                             <div className="flex items-center gap-2.5">
-                                                <div className="w-6 h-6 rounded-md bg-primary/10 overflow-hidden ring-1 ring-primary/20">
-                                                    <img
-                                                        src={msg.agent_avatar}
-                                                        alt={msg.agent_name}
-                                                        className="w-full h-full object-cover"
-                                                    />
+                                                <div className="w-6 h-6 rounded-md bg-primary/10 overflow-hidden ring-1 ring-primary/20 flex items-center justify-center">
+                                                    {msg.agent_avatar ? (
+                                                        <img
+                                                            src={
+                                                                msg.agent_avatar
+                                                            }
+                                                            alt={msg.agent_name}
+                                                            className="w-full h-full object-cover"
+                                                        />
+                                                    ) : (
+                                                        <span className="text-[10px] font-bold">
+                                                            {msg.agent_name?.charAt(
+                                                                0
+                                                            )}
+                                                        </span>
+                                                    )}
                                                 </div>
                                                 <span className="text-[11px] font-bold uppercase text-foreground/80 tracking-widest">
                                                     {msg.agent_name}
@@ -474,9 +484,7 @@ export default function ExecutionConsole() {
                         <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-muted-foreground/50">
                             <span>控制台</span>
                             <span className="text-border">/</span>
-                            <span className="text-foreground/70">
-                                执行面板
-                            </span>
+                            <span className="text-foreground/70">执行面板</span>
                         </div>
                     </div>
                     <div className="flex items-center gap-4">
@@ -495,8 +503,13 @@ export default function ExecutionConsole() {
                                                 </AvatarFallback>
                                             </Avatar>
                                         </TooltipTrigger>
-                                        <TooltipContent side="bottom" className="flex flex-row items-center gap-2.5 py-1.5 px-3">
-                                            <span className="font-bold text-xs">{agent.name}</span>
+                                        <TooltipContent
+                                            side="bottom"
+                                            className="flex flex-row items-center gap-2.5 py-1.5 px-3"
+                                        >
+                                            <span className="font-bold text-xs">
+                                                {agent.name}
+                                            </span>
                                             <span className="text-[10px] font-black uppercase tracking-widest text-primary bg-primary/10 px-1.5 py-0.5 rounded-md border border-primary/20">
                                                 {agent.role}
                                             </span>
@@ -508,10 +521,10 @@ export default function ExecutionConsole() {
                     </div>
                 </header>
 
-                <main className="flex-1 flex flex-col p-6 bg-muted/5 relative overflow-hidden">
-                    <div className="flex-1 flex flex-col bg-card rounded-xl border border-border/40 shadow-none overflow-hidden relative animate-in fade-in zoom-in-95 duration-500">
-                        <ScrollArea className="flex-1 bg-background">
-                            <div className="p-12 max-w-5xl mx-auto h-full">
+                <main className="flex-1 flex flex-col relative overflow-hidden">
+                    <div className="flex-1 flex flex-col bg-card rounded-2xl border border-border/40 shadow-none m-6 overflow-hidden relative animate-in fade-in zoom-in-95 duration-500">
+                        <div className="flex-1 h-0 overflow-y-auto bg-background scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
+                            <div className="p-12 max-w-5xl mx-auto min-h-full flex flex-col">
                                 {activeReport ? (
                                     <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 space-y-12 pb-12">
                                         <div className="flex items-end justify-between border-b border-border pb-10">
@@ -608,7 +621,7 @@ export default function ExecutionConsole() {
                                         </Card>
                                     </div>
                                 ) : (
-                                    <div className="h-full flex flex-col items-center justify-center text-center space-y-12 opacity-30 grayscale mix-blend-luminosity">
+                                    <div className="flex-1 flex flex-col items-center justify-center text-center space-y-12 opacity-30 grayscale mix-blend-luminosity min-h-[400px]">
                                         <div className="relative">
                                             <div className="absolute inset-0 bg-primary/10 blur-[120px] rounded-full scale-150" />
                                             <div className="w-32 h-32 relative border border-primary/10 bg-card flex items-center justify-center rounded-[48px] shadow-sm">
@@ -629,7 +642,7 @@ export default function ExecutionConsole() {
                                     </div>
                                 )}
                             </div>
-                        </ScrollArea>
+                        </div>
                     </div>
                 </main>
             </div>
