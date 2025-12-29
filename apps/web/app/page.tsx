@@ -299,9 +299,12 @@ export default function ExecutionConsole() {
                                     />
                                 </Button>
                             )}
-                            <span className="text-[13px] font-bold text-foreground/70 ml-1">
-                                智能决策流
-                            </span>
+                            <input
+                                value={sessionTitle}
+                                onChange={(e) => setSessionTitle(e.target.value)}
+                                className="bg-transparent border-none focus:ring-0 p-0 text-[13px] font-bold text-foreground/70 ml-1 focus:outline-none flex-1 min-w-0"
+                                placeholder="输入会话标题..."
+                            />
                         </div>
                         <Button
                             variant="ghost"
