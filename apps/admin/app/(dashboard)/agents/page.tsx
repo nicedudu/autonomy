@@ -85,8 +85,8 @@ export default function AdminAgentsThemeAligned() {
     return (
         <div className="h-full flex bg-background font-sans overflow-hidden">
             {/* === Left: Sidebar === */}
-            <aside className="w-64 border-r border-border flex flex-col bg-muted/20 shrink-0">
-                <div className="h-12 p-3 border-b border-border bg-sidebar/20 flex items-center gap-2">
+            <aside className="w-64 border-r border-border/40 flex flex-col bg-muted/20 shrink-0">
+                <div className="h-12 p-3 border-b border-border/40 bg-sidebar/20 flex items-center gap-2">
                     <div className="relative flex-1">
                         <Search
                             className="absolute left-2.5 top-1/2 -translate-y-1/2 text-foreground/30"
@@ -154,7 +154,7 @@ export default function AdminAgentsThemeAligned() {
             <main className="flex-1 flex flex-col min-w-0 bg-background relative">
                 {selectedAgent ? (
                     <>
-                        <header className="h-12 border-b border-border px-4 flex items-center justify-between shrink-0 bg-background sticky top-0 z-20">
+                        <header className="h-12 border-b border-border/40 px-4 flex items-center justify-between shrink-0 bg-background sticky top-0 z-20">
                             <div className="flex items-center gap-2">
                                 <div className="w-6 h-6 rounded-md overflow-hidden flex items-center justify-center bg-primary/10">
                                     {selectedAgent.avatar?.startsWith("http") ? (
