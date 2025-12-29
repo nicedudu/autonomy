@@ -70,9 +70,39 @@ export default function ExecutionConsole() {
     const [activeReport, setActiveReport] = useState<Report | null>(null);
     const [sessionTitle, setSessionTitle] = useState("新会话");
     const [showAgentMenu, setShowAgentMenu] = useState(false);
+    const [mentionQuery, setMentionQuery] = useState("");
+    const [selectedIndex, setSelectedIndex] = useState(0);
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const [isFlowOpen, setIsFlowOpen] = useState(true);
     const scrollRef = useRef<HTMLDivElement>(null);
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+    const filteredAgents = agents.filter((a) =>
+        a.name.toLowerCase().includes(mentionQuery.toLowerCase())
+    );
+
+    useEffect(() => {
+        setSelectedIndex(0);
+    }, [mentionQuery]);
+
+    const selectAgent = (agent: Agent) => {
+        const textarea = textareaRef.current;
+        const cursorPosition = textarea?.selectionStart || inputValue.length;
+        const textBeforeCursor = inputValue.substring(0, cursorPosition);
+        const lastAtSymbol = textBeforeCursor.lastIndexOf("@");
+        const prefix = inputValue.substring(0, lastAtSymbol);
+        const suffix = inputValue.substring(cursorPosition);
+        
+        setInputValue(`${prefix}@${agent.name} ${suffix}`);
+        setShowAgentMenu(false);
+        setMentionQuery("");
+        setSelectedIndex(0);
+        
+        // Refocus textarea
+        setTimeout(() => {
+            textarea?.focus();
+        }, 0);
+    };
 
     useEffect(() => {
         const fetchAgents = async () => {
@@ -107,10 +137,10 @@ export default function ExecutionConsole() {
         setShowAgentMenu(false);
 
         setTimeout(() => {
-            const isMention = userMsg.content.startsWith("@");
-            const target = isMention
-                ? agents.find((a) => userMsg.content.includes(a.name))
-                : null;
+            const mentionedAgent = agents.find((a) =>
+                userMsg.content.includes(`@${a.name}`)
+            );
+            const target = mentionedAgent || null;
 
             const assistantMsg: Message = {
                 id: (Date.now() + 1).toString(),
@@ -377,47 +407,111 @@ export default function ExecutionConsole() {
                         </div>
                     </ScrollArea>
 
-                    <div className="p-6 bg-background">
+                    <div className="p-6 bg-background relative">
                         {showAgentMenu && (
-                            <Card className="absolute bottom-full left-6 mb-4 w-64 bg-popover/95 backdrop-blur-2xl border-border shadow-none p-1.5 z-50 rounded-xl ring-1 ring-border animate-in slide-in-from-bottom-2">
-                                <div className="px-3 py-2 text-[10px] font-black text-muted-foreground uppercase tracking-widest border-b border-border mb-1.5">
-                                    智能体矩阵
+                            <Card className="absolute bottom-full left-6 w-56 gap-0 bg-popover/95 backdrop-blur-2xl border-border shadow-2xl p-1 z-50 rounded-xl ring-1 ring-border animate-in slide-in-from-bottom-2">
+                                <div className="px-2 py-1.5 text-[10px] font-black text-muted-foreground uppercase tracking-widest border-b border-border/50 mb-1">
+                                    智能体
                                 </div>
-                                {agents.map((agent) => (
-                                    <button
-                                        key={agent.id}
-                                        onClick={() => {
-                                            setInputValue(`@${agent.name} `);
-                                            setShowAgentMenu(false);
-                                        }}
-                                        className="w-full flex items-center gap-3 p-2 hover:bg-primary/10 rounded-lg transition-all text-left group"
-                                    >
-                                        <div className="w-8 h-8 rounded-lg bg-muted overflow-hidden ring-1 ring-border/50 group-hover:ring-primary/30">
-                                            <img
-                                                src={agent.avatar}
-                                                alt={agent.name}
-                                                className="w-full h-full object-cover"
-                                            />
-                                        </div>
-                                        <div className="text-[11px] font-bold group-hover:text-primary transition-colors">
-                                            {agent.name}
-                                        </div>
-                                    </button>
-                                ))}
+                                <div className="max-h-48 overflow-y-auto scrollbar-hide">
+                                    {filteredAgents.map((agent, index) => (
+                                        <button
+                                            key={agent.id}
+                                            onClick={() => selectAgent(agent)}
+                                            className={`w-full flex items-center gap-2.5 p-1.5 rounded-lg transition-all text-left group ${
+                                                index === selectedIndex
+                                                    ? "bg-primary/20 ring-1 ring-primary/30"
+                                                    : "hover:bg-primary/10"
+                                            }`}
+                                        >
+                                            <div className="w-6 h-6 rounded-md bg-muted overflow-hidden ring-1 ring-border/50 group-hover:ring-primary/30 shrink-0">
+                                                <img
+                                                    src={agent.avatar}
+                                                    alt={agent.name}
+                                                    className="w-full h-full object-cover"
+                                                />
+                                            </div>
+                                            <div className={`text-[11px] font-bold transition-colors truncate ${
+                                                index === selectedIndex ? "text-primary" : "group-hover:text-primary"
+                                            }`}>
+                                                {agent.name}
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
                             </Card>
                         )}
-
                         <Card className="bg-background/50 border-border/40 shadow-none rounded-xl p-1.5 flex flex-col gap-1 transition-all overflow-hidden group-focus-within:ring-1 group-focus-within:ring-primary/30">
                             <textarea
+                                ref={textareaRef}
                                 value={inputValue}
                                 onChange={(e) => {
-                                    setInputValue(e.target.value);
-                                    if (e.target.value === "@")
-                                        setShowAgentMenu(true);
-                                    else if (!e.target.value.includes("@"))
+                                    const val = e.target.value;
+                                    setInputValue(val);
+
+                                    const cursorPosition =
+                                        e.target.selectionStart;
+                                    const textBeforeCursor = val.substring(
+                                        0,
+                                        cursorPosition
+                                    );
+                                    const lastAtSymbol =
+                                        textBeforeCursor.lastIndexOf("@");
+
+                                    if (lastAtSymbol !== -1) {
+                                        const charBeforeAt =
+                                            lastAtSymbol > 0
+                                                ? textBeforeCursor[
+                                                      lastAtSymbol - 1
+                                                  ]
+                                                : "";
+                                        const query =
+                                            textBeforeCursor.substring(
+                                                lastAtSymbol + 1
+                                            );
+
+                                        // Only trigger if @ is at start or preceded by space/newline, and no space in query
+                                        if (
+                                            (lastAtSymbol === 0 ||
+                                                charBeforeAt === " " ||
+                                                charBeforeAt === "\n") &&
+                                            !query.includes(" ")
+                                        ) {
+                                            setShowAgentMenu(true);
+                                            setMentionQuery(query);
+                                        } else {
+                                            setShowAgentMenu(false);
+                                            setMentionQuery("");
+                                        }
+                                    } else {
                                         setShowAgentMenu(false);
+                                        setMentionQuery("");
+                                    }
                                 }}
                                 onKeyDown={(e) => {
+                                    if (showAgentMenu && filteredAgents.length > 0) {
+                                        if (e.key === "ArrowDown") {
+                                            e.preventDefault();
+                                            setSelectedIndex((prev) => (prev + 1) % filteredAgents.length);
+                                            return;
+                                        }
+                                        if (e.key === "ArrowUp") {
+                                            e.preventDefault();
+                                            setSelectedIndex((prev) => (prev - 1 + filteredAgents.length) % filteredAgents.length);
+                                            return;
+                                        }
+                                        if (e.key === "Enter") {
+                                            e.preventDefault();
+                                            selectAgent(filteredAgents[selectedIndex]);
+                                            return;
+                                        }
+                                        if (e.key === "Escape") {
+                                            e.preventDefault();
+                                            setShowAgentMenu(false);
+                                            return;
+                                        }
+                                    }
+
                                     if (e.key === "Enter" && !e.shiftKey) {
                                         e.preventDefault();
                                         handleSend();
