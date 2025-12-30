@@ -14,7 +14,13 @@ import {
     SelectValue,
 } from "@autonomy/ui/components/select";
 import { Textarea } from "@autonomy/ui/components/textarea";
-import { Code2, Save, Search, Terminal, Zap } from "lucide-react";
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from "@autonomy/ui/components/tooltip";
+import { Code2, Save, Search, Settings, Terminal, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
 
 export default function AdminAgentsThemeAligned() {
@@ -24,6 +30,10 @@ export default function AdminAgentsThemeAligned() {
     const [searchQuery, setSearchQuery] = useState("");
     const [loading, setLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
+    const [generalConfig, setGeneralConfig] = useState({
+        provider_id: "",
+        model: "",
+    });
 
     const fetchData = async () => {
         setLoading(true);
@@ -34,9 +44,19 @@ export default function AdminAgentsThemeAligned() {
         const { data: providersData } = await supabase
             .from("llm_providers")
             .select("*");
+        const { data: settingsData } = await supabase
+            .from("system_settings")
+            .select("*")
+            .single();
 
         if (agentsData) setAgents(agentsData);
         if (providersData) setProviders(providersData);
+        if (settingsData) {
+            setGeneralConfig({
+                provider_id: settingsData.default_provider_id,
+                model: settingsData.default_model,
+            });
+        }
 
         if (agentsData && agentsData.length > 0 && !selectedAgent) {
             setSelectedAgent(agentsData[0]);
@@ -48,9 +68,10 @@ export default function AdminAgentsThemeAligned() {
         fetchData();
     }, []);
 
-    const filteredAgents = agents.filter((agent) =>
-        agent.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        agent.role?.toLowerCase().includes(searchQuery.toLowerCase())
+    const filteredAgents = agents.filter(
+        (agent) =>
+            agent.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            agent.role?.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
     const currentProvider = providers.find(
@@ -60,18 +81,42 @@ export default function AdminAgentsThemeAligned() {
         ? currentProvider.supported_models
         : [];
 
+    const generalProvider = providers.find(
+        (p) => p.id === generalConfig.provider_id
+    );
+    const generalAvailableModels = Array.isArray(
+        generalProvider?.supported_models
+    )
+        ? generalProvider.supported_models
+        : [];
+
     const handleSave = async () => {
         setIsSaving(true);
-        const { error } = await supabase
-            .from("agents")
-            .update({
-                provider_id: selectedAgent.provider_id,
-                model: selectedAgent.model,
-                system_prompt: selectedAgent.system_prompt,
-                user_prompt: selectedAgent.user_prompt,
-                temperature: selectedAgent.temperature,
-            })
-            .eq("id", selectedAgent.id);
+        let error;
+
+        if (selectedAgent === "general_config") {
+            const { error: settingsError } = await supabase
+                .from("system_settings")
+                .update({
+                    default_provider_id: generalConfig.provider_id,
+                    default_model: generalConfig.model,
+                    updated_at: new Date().toISOString(),
+                })
+                .eq("id", 1); // Assumes single row with ID 1
+            error = settingsError;
+        } else {
+            const { error: agentError } = await supabase
+                .from("agents")
+                .update({
+                    provider_id: selectedAgent.provider_id,
+                    model: selectedAgent.model,
+                    system_prompt: selectedAgent.system_prompt,
+                    user_prompt: selectedAgent.user_prompt,
+                    temperature: selectedAgent.temperature,
+                })
+                .eq("id", selectedAgent.id);
+            error = agentError;
+        }
 
         if (!error) {
             alert("配置已保存");
@@ -148,23 +193,180 @@ export default function AdminAgentsThemeAligned() {
                         ))}
                     </nav>
                 </ScrollArea>
+
+                <div className="p-4 bg-transparent flex justify-end">
+                    <TooltipProvider>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() =>
+                                        setSelectedAgent("general_config")
+                                    }
+                                    className={`h-9 w-9 rounded-xl transition-all shadow-none ${
+                                        selectedAgent === "general_config"
+                                            ? "bg-primary/10 text-primary border border-primary/20 hover:bg-primary/10 hover:text-primary"
+                                            : "text-foreground/30 hover:bg-foreground/5 hover:text-foreground"
+                                    }`}
+                                >
+                                    <Settings
+                                        size={16}
+                                        className={
+                                            selectedAgent === "general_config"
+                                                ? "text-primary"
+                                                : "text-foreground/30"
+                                        }
+                                    />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent
+                                side="right"
+                                className="flex flex-row items-center gap-2.5 py-1.5 px-3"
+                            >
+                                <span className="font-bold text-xs">
+                                    通用智能体配置
+                                </span>
+                            </TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
+                </div>
             </aside>
 
             {/* === Right: Content === */}
             <main className="flex-1 flex flex-col min-w-0 bg-background relative">
-                {selectedAgent ? (
+                {selectedAgent === "general_config" ? (
+                    <div className="flex-1 flex flex-col">
+                        <header className="h-12 border-b border-border/40 px-4 flex items-center justify-between shrink-0 bg-background sticky top-0 z-20">
+                            <div className="flex items-center gap-2">
+                                <div className="w-6 h-6 rounded-md overflow-hidden flex items-center justify-center bg-primary/10">
+                                    <Settings
+                                        size={14}
+                                        className="text-primary"
+                                    />
+                                </div>
+                                <span className="text-[14px] font-bold text-foreground">
+                                    通用智能体配置
+                                </span>
+                            </div>
+                        </header>
+                        <ScrollArea className="flex-1 p-6">
+                            <div className="max-w-4xl mx-auto space-y-10 pb-12">
+                                {/* 1. LLM Config */}
+                                <section className="space-y-4">
+                                    <div className="flex items-center gap-2 text-foreground">
+                                        <Zap
+                                            size={14}
+                                            className="text-primary"
+                                        />
+                                        <h3 className="text-xs font-bold uppercase tracking-wider">
+                                            LLM 核心配置 (全局默认)
+                                        </h3>
+                                    </div>
+
+                                    <Card className="p-4 bg-muted/10 border-border rounded-xl space-y-6 shadow-none">
+                                        <div className="grid grid-cols-2 gap-6">
+                                            <div className="space-y-2">
+                                                <Label className="text-xs font-black text-muted-foreground uppercase tracking-widest">
+                                                    默认供应商
+                                                </Label>
+                                                <Select
+                                                    value={
+                                                        generalConfig.provider_id
+                                                    }
+                                                    onValueChange={(val) => {
+                                                        const p = providers.find(
+                                                            (prov) =>
+                                                                prov.id === val
+                                                        );
+                                                        setGeneralConfig({
+                                                            provider_id: val,
+                                                            model:
+                                                                p
+                                                                    ?.supported_models?.[0] ||
+                                                                "",
+                                                        });
+                                                    }}
+                                                >
+                                                    <SelectTrigger className="w-full bg-background border-border h-9 text-sm shadow-none">
+                                                        <SelectValue placeholder="选择供应商" />
+                                                    </SelectTrigger>
+                                                    <SelectContent className="border-border">
+                                                        {providers.map((p) => (
+                                                            <SelectItem
+                                                                key={p.id}
+                                                                value={p.id}
+                                                            >
+                                                                {p.name}
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label className="text-xs font-black text-muted-foreground uppercase tracking-widest">
+                                                    默认模型
+                                                </Label>
+                                                <Select
+                                                    value={generalConfig.model}
+                                                    onValueChange={(val) =>
+                                                        setGeneralConfig({
+                                                            ...generalConfig,
+                                                            model: val,
+                                                        })
+                                                    }
+                                                >
+                                                    <SelectTrigger className="w-full bg-background border-border h-9 text-sm shadow-none">
+                                                        <SelectValue placeholder="选择模型" />
+                                                    </SelectTrigger>
+                                                    <SelectContent className="border-border">
+                                                        {generalAvailableModels.map(
+                                                            (m: string) => (
+                                                                <SelectItem
+                                                                    key={m}
+                                                                    value={m}
+                                                                >
+                                                                    {m}
+                                                                </SelectItem>
+                                                            )
+                                                        )}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                        </div>
+                                    </Card>
+                                </section>
+
+                                <div className="flex justify-end pt-6">
+                                    <Button
+                                        onClick={handleSave}
+                                        disabled={isSaving}
+                                        className="text-sm px-8 h-10 font-bold shadow-lg shadow-primary/20"
+                                    >
+                                        <Save size={16} />
+                                        {isSaving ? "保存中..." : "保存"}
+                                    </Button>
+                                </div>
+                            </div>
+                        </ScrollArea>
+                    </div>
+                ) : selectedAgent ? (
                     <>
                         <header className="h-12 border-b border-border/40 px-4 flex items-center justify-between shrink-0 bg-background sticky top-0 z-20">
                             <div className="flex items-center gap-2">
                                 <div className="w-6 h-6 rounded-md overflow-hidden flex items-center justify-center bg-primary/10">
-                                    {selectedAgent.avatar?.startsWith("http") ? (
+                                    {selectedAgent.avatar?.startsWith(
+                                        "http"
+                                    ) ? (
                                         <img
                                             src={selectedAgent.avatar}
                                             alt={selectedAgent.name}
                                             className="w-full h-full object-cover"
                                         />
                                     ) : (
-                                        <span className="text-sm">{selectedAgent.avatar}</span>
+                                        <span className="text-sm">
+                                            {selectedAgent.avatar}
+                                        </span>
                                     )}
                                 </div>
                                 <span className="text-[14px] font-bold text-foreground">
@@ -194,7 +396,9 @@ export default function AdminAgentsThemeAligned() {
                                                     供应商
                                                 </Label>
                                                 <Select
-                                                    value={selectedAgent.provider_id}
+                                                    value={
+                                                        selectedAgent.provider_id
+                                                    }
                                                     onValueChange={(val) =>
                                                         setSelectedAgent({
                                                             ...selectedAgent,
@@ -207,7 +411,10 @@ export default function AdminAgentsThemeAligned() {
                                                     </SelectTrigger>
                                                     <SelectContent className="border-border">
                                                         {providers.map((p) => (
-                                                            <SelectItem key={p.id} value={p.id}>
+                                                            <SelectItem
+                                                                key={p.id}
+                                                                value={p.id}
+                                                            >
                                                                 {p.name}
                                                             </SelectItem>
                                                         ))}
@@ -231,11 +438,16 @@ export default function AdminAgentsThemeAligned() {
                                                         <SelectValue placeholder="选择模型" />
                                                     </SelectTrigger>
                                                     <SelectContent className="border-border">
-                                                        {availableModels.map((m: string) => (
-                                                            <SelectItem key={m} value={m}>
-                                                                {m}
-                                                            </SelectItem>
-                                                        ))}
+                                                        {availableModels.map(
+                                                            (m: string) => (
+                                                                <SelectItem
+                                                                    key={m}
+                                                                    value={m}
+                                                                >
+                                                                    {m}
+                                                                </SelectItem>
+                                                            )
+                                                        )}
                                                     </SelectContent>
                                                 </Select>
                                             </div>
@@ -255,7 +467,9 @@ export default function AdminAgentsThemeAligned() {
                                         </h3>
                                     </div>
                                     <Textarea
-                                        value={selectedAgent.system_prompt || ""}
+                                        value={
+                                            selectedAgent.system_prompt || ""
+                                        }
                                         onChange={(e) =>
                                             setSelectedAgent({
                                                 ...selectedAgent,

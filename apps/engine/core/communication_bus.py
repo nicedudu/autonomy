@@ -58,7 +58,12 @@ class CommunicationBus:
         self.meetings = {}  # meeting_id -> meeting_instance
         self.message_history = []
         self.message_queue = []
+        self.on_message_callback = None
     
+    def set_on_message_callback(self, callback):
+        """设置消息回调，用于对接 UI 或外部监控"""
+        self.on_message_callback = callback
+
     def register_agent(self, agent):
         """注册Agent"""
         self.agents[agent.agent_id] = agent
@@ -69,43 +74,56 @@ class CommunicationBus:
         if agent_id in self.agents:
             del self.agents[agent_id]
             print(f"通信中枢: 已注销Agent {agent_id}")
-    
-    def send_message(self, message: Message) -> bool:
+
+    async def send_message(self, message: Message) -> bool:
         """发送消息"""
         self.message_history.append(message)
         
+        # 触发回调
+        if self.on_message_callback:
+            try:
+                self.on_message_callback(message)
+            except Exception as e:
+                print(f"通信中枢回调执行失败: {e}")
+
         # 私聊模式
         if message.message_type == "private":
-            return self._send_private_message(message)
+            return await self._send_private_message(message)
         
         # 广播模式
         elif message.message_type == "broadcast":
-            return self._send_broadcast_message(message)
+            return await self._send_broadcast_message(message)
         
         # 会议模式
         elif message.message_type == "meeting":
-            return self._send_meeting_message(message)
+            return await self._send_meeting_message(message)
         
         return False
     
-    def _send_private_message(self, message: Message) -> bool:
+    async def _send_private_message(self, message: Message) -> bool:
         """发送私聊消息"""
         if message.recipient in self.agents:
-            self.agents[message.recipient].receive_message(message)
+            # 异步调用接收者的处理逻辑
+            await self.agents[message.recipient].receive_message(message)
             return True
         else:
             print(f"通信中枢: 无法发送消息，接收者 {message.recipient} 未注册")
             return False
     
-    def _send_broadcast_message(self, message: Message) -> bool:
+    async def _send_broadcast_message(self, message: Message) -> bool:
         """发送广播消息"""
+        import asyncio
+        tasks = []
         for agent_id, agent in self.agents.items():
             if agent_id != message.sender:  # 不发送给自己
-                agent.receive_message(message)
+                tasks.append(agent.receive_message(message))
+        if tasks:
+            await asyncio.gather(*tasks)
         return True
     
-    def _send_meeting_message(self, message: Message) -> bool:
+    async def _send_meeting_message(self, message: Message) -> bool:
         """发送会议消息"""
+        import asyncio
         if message.meeting_id not in self.meetings:
             print(f"通信中枢: 无法发送会议消息，会议 {message.meeting_id} 不存在")
             return False
@@ -114,9 +132,12 @@ class CommunicationBus:
         meeting.add_message(message)
         
         # 向所有参会者发送消息
+        tasks = []
         for participant in meeting.participants:
             if participant in self.agents and participant != message.sender:
-                self.agents[participant].receive_message(message)
+                tasks.append(self.agents[participant].receive_message(message))
+        if tasks:
+            await asyncio.gather(*tasks)
         
         return True
     

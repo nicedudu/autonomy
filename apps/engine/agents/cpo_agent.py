@@ -1,15 +1,12 @@
-from typing import List, Dict, Any
 import time
-from agents.base_agent import BaseAgent, ToolCall
-from core.reasoning_engine import ReActReasoningEngine
-
+from typing import List, Dict, Any
 from agents.base_agent import BaseAgent, ToolCall, Message
+from core.reasoning_engine import ReActReasoningEngine
 
 class CPOAgent(BaseAgent):
     """首席选品官Agent"""
     
     def __init__(self, agent_id: str, name: str):
-        # ... (保持现有初始化逻辑)
         tools = [
             "Trend_Hunter",
             "Market_Scraper",
@@ -27,7 +24,25 @@ class CPOAgent(BaseAgent):
         self.current_task = None
         self.thought_process = []
         self.product_selection_history = []
-    
+
+    async def process_message(self, message: Message):
+        """处理部门间消息"""
+        sender = message.sender
+        subject = message.subject
+        content = message.content
+        
+        print(f"[{self.name}] 接收到来自 {sender} 的消息: {subject}")
+        
+        if subject == "task_delegation":
+            instruction = content.get("instruction")
+            print(f"[{self.name}] 正在执行来自 CEO 的任务: {instruction[:50]}...")
+            
+            # 使用流式回复到总线
+            await self.chat_to_bus(
+                user_input=f"这是来自 CEO 的指令，请执行并给出专业分析：\n{instruction}",
+                recipient=sender
+            )
+
     def _handle_product_analysis_request(self, content: Dict[str, Any]):
         """处理产品分析请求"""
         product = content.get("product")

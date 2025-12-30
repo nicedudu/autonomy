@@ -18,7 +18,7 @@ class SCMAgent(BaseAgent):
         self.reasoning_engine = ReActReasoningEngine()
         self.active_procurements = {} # 记录进行中的采购任务
 
-    def process_message(self, message: Message):
+    async def process_message(self, message: Message):
         """处理部门间消息"""
         sender = message.sender
         subject = message.subject
@@ -29,11 +29,22 @@ class SCMAgent(BaseAgent):
         if subject == "product_selection_approved":
             # CPO 选品获批，触发供应链准备
             product_id = content.get("product_id")
+            # 注意：如果这些方法涉及耗时 LLM 调用，也应该改为 async
             self._handle_new_product_pipeline(product_id)
         
         elif subject == "request_cost_analysis":
             # 响应财务或CEO的成本分析请求
             self._handle_cost_analysis(content)
+            
+        elif subject == "task_delegation":
+            instruction = content.get("instruction")
+            print(f"[{self.name}] 正在执行来自 CEO 的任务: {instruction[:50]}...")
+            
+            # 使用流式回复到总线
+            await self.chat_to_bus(
+                user_input=f"这是来自 CEO 的指令，请执行并给出专业分析：\n{instruction}",
+                recipient=sender
+            )
 
     def _handle_new_product_pipeline(self, product_id: str):
         """处理新产品上架前的供应链管道"""

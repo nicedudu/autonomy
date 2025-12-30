@@ -19,10 +19,13 @@ import {
 } from "@autonomy/ui/components/tooltip";
 import {
     AtSign,
+    ChevronDown,
+    ChevronRight,
     Clock,
     Command,
     Globe,
     LayoutGrid,
+    Lightbulb,
     MessageSquare,
     PanelLeft,
     Paperclip,
@@ -34,6 +37,295 @@ import {
     Zap,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+
+// --- Data Visualization Renderer ---
+const ChartRenderer = ({ data }: { data: any }) => {
+    return (
+        <div className="my-6 bg-card border border-border/60 rounded-2xl overflow-hidden shadow-sm animate-in fade-in zoom-in-95 duration-500">
+            <div className="bg-muted/30 px-4 py-3 border-b border-border/40 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                    <span className="text-[10px] font-black uppercase tracking-widest text-foreground/70">
+                        {data.chartType || "数据可视化"}
+                    </span>
+                </div>
+                <Badge
+                    variant="outline"
+                    className="text-[9px] font-mono opacity-50 uppercase"
+                >
+                    Live Data
+                </Badge>
+            </div>
+            <div className="p-6 flex flex-col items-center justify-center min-h-[200px] bg-linear-to-b from-transparent to-primary/5">
+                <div className="text-center space-y-2">
+                    <p className="text-xs font-bold text-foreground/80">
+                        {data.title || "正在渲染图表结构..."}
+                    </p>
+                    <div className="flex gap-1 justify-center items-end h-12">
+                        {[40, 70, 45, 90, 65].map((h, i) => (
+                            <div
+                                key={i}
+                                className="w-2 bg-primary/20 rounded-t-sm animate-in slide-in-from-bottom duration-1000"
+                                style={{
+                                    height: `${h}%`,
+                                    transitionDelay: `${i * 100}ms`,
+                                }}
+                            />
+                        ))}
+                    </div>
+                    <p className="text-[10px] text-muted-foreground font-medium">
+                        数据点: {data.data?.length || 0} 个维度已锁定
+                    </p>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const MarkdownComponents = {
+    p: ({ children }: any) => (
+        <p className="mb-3 last:mb-0 leading-relaxed break-all whitespace-pre-wrap min-w-0">
+            {children}
+        </p>
+    ),
+    h1: ({ children }: any) => (
+        <h1 className="text-xl font-black mb-4 mt-6 text-foreground tracking-tight">
+            {children}
+        </h1>
+    ),
+    h2: ({ children }: any) => (
+        <h2 className="text-lg font-bold mb-3 mt-5 text-foreground/90 tracking-tight">
+            {children}
+        </h2>
+    ),
+    h3: ({ children }: any) => (
+        <h3 className="text-base font-bold mb-2 mt-4 text-foreground/80">
+            {children}
+        </h3>
+    ),
+
+    // --- Enhanced Lists ---
+    li: ({ children }: any) => (
+        <li className="flex items-start gap-2 pl-1 mb-1.5">
+            <span className="mt-2 w-1.5 h-1.5 rounded-full bg-black shrink-0" />
+            <span className="flex-1">{children}</span>
+        </li>
+    ),
+    ul: ({ children }: any) => <ul className="mb-4 space-y-0.5">{children}</ul>,
+    ol: ({ children }: any) => (
+        <ol className="list-decimal pl-5 mb-4 space-y-1.5 marker:text-primary/50 marker:font-mono marker:text-xs">
+            {children}
+        </ol>
+    ),
+
+    // --- Enhanced Blockquote ---
+    blockquote: ({ children }: any) => (
+        <div className="flex gap-3 bg-linear-to-r from-primary/5 to-transparent p-4 my-4 rounded-xl border border-primary/10 shadow-sm items-start not-prose animate-in slide-in-from-left-2">
+            <div className="p-1 bg-primary/10 text-primary rounded-lg shrink-0 mt-0.5">
+                <Lightbulb size={16} />
+            </div>
+            <div className="text-foreground/80 text-sm font-medium italic leading-relaxed">
+                {children}
+            </div>
+        </div>
+    ),
+
+    // --- Intelligent Code & Chart Logic ---
+    code: (props: any) => {
+        const { node, inline, className, children, ...rest } = props;
+        const match = /language-(\w+)/.exec(className || "");
+        const isJson = match && match[1] === "json";
+
+        if (!inline && isJson) {
+            try {
+                const jsonStr = String(children).replace(/\n$/, "");
+                if (
+                    jsonStr.includes('"chartType"') &&
+                    jsonStr.includes('"data"')
+                ) {
+                    const data = JSON.parse(jsonStr);
+                    if (data.chartType && data.data)
+                        return <ChartRenderer data={data} />;
+                }
+            } catch (e) {}
+        }
+
+        return inline ? (
+            <code
+                className="bg-primary/10 text-primary px-1.5 py-0.5 rounded font-mono text-[0.85em] font-bold"
+                {...rest}
+            >
+                {children}
+            </code>
+        ) : (
+            <div className="relative my-4 group max-w-full">
+                <pre className="bg-muted/50 border border-border/40 rounded-xl p-4 overflow-x-auto font-mono text-xs leading-relaxed scrollbar-thin">
+                    <code className={className}>{children}</code>
+                </pre>
+                {match && (
+                    <div className="absolute top-2 right-3 text-[10px] font-black uppercase text-muted-foreground/40 pointer-events-none">
+                        {match[1]}
+                    </div>
+                )}
+            </div>
+        );
+    },
+
+    // --- Enhanced Tables ---
+    table: ({ children }: any) => (
+        <div className="my-6 w-full overflow-hidden rounded-xl border border-border/40 bg-muted/5 not-prose">
+            <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left border-collapse">
+                    {children}
+                </table>
+            </div>
+        </div>
+    ),
+    thead: ({ children }: any) => (
+        <thead className="bg-muted/50 text-muted-foreground font-bold uppercase tracking-wider border-b border-border/40">
+            {children}
+        </thead>
+    ),
+    th: ({ children }: any) => (
+        <th className="px-4 py-3 whitespace-nowrap">{children}</th>
+    ),
+    tbody: ({ children }: any) => (
+        <tbody className="divide-y divide-border/10">{children}</tbody>
+    ),
+    tr: ({ children }: any) => (
+        <tr className="group transition-colors hover:bg-primary/5">
+            {children}
+        </tr>
+    ),
+    td: ({ children }: any) => (
+        <td className="px-4 py-3 text-foreground/80 border-none group-first:font-bold group-first:text-foreground">
+            {children}
+        </td>
+    ),
+
+    a: ({ children, href }: any) => (
+        <a
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary hover:underline underline-offset-4 font-bold decoration-primary/30"
+        >
+            {children}
+        </a>
+    ),
+    strong: ({ children }: any) => (
+        <strong className="font-bold text-foreground antialiased">
+            {children}
+        </strong>
+    ),
+    hr: ({ children }: any) => <hr className="my-6 border-border/20" />,
+};
+
+// --- Assistant Message Component ---
+const AssistantMessageItem = ({
+    msg,
+    isLatest,
+    isLoading,
+}: {
+    msg: Message;
+    isLatest: boolean;
+    isLoading: boolean;
+}) => {
+    const [isThinkingExpanded, setIsThinkingExpanded] = useState(true);
+
+    // Parse thinking tags: <think>content</think>
+    const thinkMatch = msg.content.match(/<think>([\s\S]*?)<\/think>/);
+    const thinkingContent = thinkMatch ? thinkMatch[1] : null;
+    const mainContent = msg.content
+        .replace(/<think>[\s\S]*?<\/think>/, "")
+        .trim();
+    const isStreaming = isLatest && isLoading;
+
+    return (
+        <div className="space-y-3 w-full min-w-0 overflow-hidden">
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                    <div className="w-6 h-6 rounded-md bg-primary/10 overflow-hidden ring-1 ring-primary/20 flex items-center justify-center">
+                        {msg.agent_avatar ? (
+                            <img
+                                src={msg.agent_avatar}
+                                alt={msg.agent_name}
+                                className="w-full h-full object-cover"
+                            />
+                        ) : (
+                            <span className="text-[10px] font-bold">
+                                {msg.agent_name?.charAt(0)}
+                            </span>
+                        )}
+                    </div>
+                    <span className="text-[11px] font-bold text-foreground/80 tracking-widest">
+                        {msg.agent_name}
+                    </span>
+                </div>
+                <span className="text-[9px] font-medium text-muted-foreground/50 tabular-nums">
+                    {new Date(msg.timestamp).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                    })}
+                </span>
+            </div>
+
+            {thinkingContent !== null && (
+                <div className="bg-muted/30 rounded-xl overflow-hidden border border-border/40 transition-all w-full min-w-0">
+                    <button
+                        onClick={() =>
+                            setIsThinkingExpanded(!isThinkingExpanded)
+                        }
+                        className="w-full flex items-center gap-2 px-3 py-2 hover:bg-muted/50 transition-colors text-[10px] font-bold text-muted-foreground/70 uppercase tracking-tight"
+                    >
+                        {isThinkingExpanded ? (
+                            <ChevronDown size={12} />
+                        ) : (
+                            <ChevronRight size={12} />
+                        )}
+                        <span className="flex-1 text-left">
+                            智能体思考中...
+                        </span>
+                        {isStreaming && (
+                            <Sparkles
+                                size={10}
+                                className="animate-pulse text-primary/50"
+                            />
+                        )}
+                    </button>
+                    {isThinkingExpanded && (
+                        <div className="px-4 pb-3 text-xs leading-relaxed text-muted-foreground/60 italic font-medium border-t border-border/20 pt-2 break-all">
+                            <ReactMarkdown
+                                remarkPlugins={[remarkGfm]}
+                                components={MarkdownComponents}
+                            >
+                                {thinkingContent || "正在组织逻辑..."}
+                            </ReactMarkdown>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            <div className="text-sm leading-relaxed text-foreground/90 font-medium relative [&_p]:mb-6 last:[&_p]:mb-0 break-all w-full min-w-0">
+                <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={MarkdownComponents}
+                >
+                    {mainContent}
+                </ReactMarkdown>
+                {isStreaming && (
+                    <span className="inline-flex gap-1 ml-1 items-center align-middle">
+                        <span className="w-1 h-1 rounded-full bg-primary animate-bounce [animation-duration:0.8s] [animation-delay:-0.3s]"></span>
+                        <span className="w-1 h-1 rounded-full bg-primary animate-bounce [animation-duration:0.8s] [animation-delay:-0.15s]"></span>
+                        <span className="w-1 h-1 rounded-full bg-primary animate-bounce [animation-duration:0.8s]"></span>
+                    </span>
+                )}
+            </div>
+        </div>
+    );
+};
 
 interface Message {
     id: string;
@@ -64,6 +356,9 @@ interface Report {
 
 export default function ExecutionConsole() {
     const [agents, setAgents] = useState<Agent[]>([]);
+    const [currentSessionId, setCurrentSessionId] = useState<string | null>(
+        null
+    );
     const [messages, setMessages] = useState<Message[]>([]);
     const [inputValue, setInputValue] = useState("");
     const [isLoading, setIsLoading] = useState(false);
@@ -74,8 +369,36 @@ export default function ExecutionConsole() {
     const [selectedIndex, setSelectedIndex] = useState(0);
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const [isFlowOpen, setIsFlowOpen] = useState(true);
+    const [flowWidth, setFlowWidth] = useState(380);
+    const [isResizing, setIsResizing] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+    const handleMouseDown = (e: React.MouseEvent) => {
+        setIsResizing(true);
+        const startX = e.clientX;
+        const startWidth = flowWidth;
+        document.body.style.userSelect = "none";
+
+        const handleMouseMove = (e: MouseEvent) => {
+            const newWidth = startWidth + (e.clientX - startX);
+            if (newWidth > 320 && newWidth < 800) {
+                setFlowWidth(newWidth);
+            }
+        };
+
+        const handleMouseUp = () => {
+            setIsResizing(false);
+            document.removeEventListener("mousemove", handleMouseMove);
+            document.removeEventListener("mouseup", handleMouseUp);
+            document.body.style.cursor = "default";
+            document.body.style.userSelect = "auto";
+        };
+
+        document.addEventListener("mousemove", handleMouseMove);
+        document.addEventListener("mouseup", handleMouseUp);
+        document.body.style.cursor = "col-resize";
+    };
 
     const filteredAgents = agents.filter((a) =>
         a.name.toLowerCase().includes(mentionQuery.toLowerCase())
@@ -92,17 +415,19 @@ export default function ExecutionConsole() {
         const lastAtSymbol = textBeforeCursor.lastIndexOf("@");
         const prefix = inputValue.substring(0, lastAtSymbol);
         const suffix = inputValue.substring(cursorPosition);
-        
+
         setInputValue(`${prefix}@${agent.name} ${suffix}`);
         setShowAgentMenu(false);
         setMentionQuery("");
         setSelectedIndex(0);
-        
+
         // Refocus textarea
         setTimeout(() => {
             textarea?.focus();
         }, 0);
     };
+
+    const agentsRef = useRef<Agent[]>([]);
 
     useEffect(() => {
         const fetchAgents = async () => {
@@ -110,9 +435,93 @@ export default function ExecutionConsole() {
                 .from("agents")
                 .select("*")
                 .order("identifier");
-            if (data) setAgents(data);
+            if (data) {
+                setAgents(data);
+                agentsRef.current = data;
+            }
         };
         fetchAgents();
+    }, []);
+
+    useEffect(() => {
+        let ws: WebSocket | null = null;
+        let reconnectTimeout: NodeJS.Timeout;
+
+        const connect = () => {
+            ws = new WebSocket("ws://localhost:8000/ws/ops");
+
+            ws.onmessage = (event) => {
+                try {
+                    const payload = JSON.parse(event.data);
+                    if (payload.type === "agent_message") {
+                        const msgData = payload.data;
+                        const { sender, subject, content } = msgData;
+
+                        if (subject === "task_stream_chunk") {
+                            const agent = agentsRef.current.find(
+                                (a) => a.identifier === sender
+                            );
+                            const messageId = `stream_${sender}`;
+
+                            setMessages((prev) => {
+                                const existing = prev.find(
+                                    (m) => m.id === messageId
+                                );
+                                if (existing) {
+                                    return prev.map((m) =>
+                                        m.id === messageId
+                                            ? {
+                                                  ...m,
+                                                  content:
+                                                      content.full_content_so_far,
+                                              }
+                                            : m
+                                    );
+                                } else {
+                                    return [
+                                        ...prev,
+                                        {
+                                            id: messageId,
+                                            role: "assistant",
+                                            content: content.chunk,
+                                            agent_id: sender,
+                                            agent_name: agent?.name || sender,
+                                            agent_avatar: agent?.avatar || "",
+                                            timestamp: Date.now(),
+                                        },
+                                    ];
+                                }
+                            });
+                        }
+
+                        if (subject === "task_result") {
+                            const messageId = `stream_${sender}`;
+                            setMessages((prev) =>
+                                prev.map((m) =>
+                                    m.id === messageId
+                                        ? { ...m, content: content.result }
+                                        : m
+                                )
+                            );
+                        }
+                    }
+                } catch (e) {
+                    console.error("WS error:", e);
+                }
+            };
+
+            ws.onclose = () => {
+                console.log("WS closed, reconnecting...");
+                reconnectTimeout = setTimeout(connect, 3000);
+            };
+        };
+
+        connect();
+
+        return () => {
+            if (ws) ws.close();
+            clearTimeout(reconnectTimeout);
+        };
     }, []);
 
     useEffect(() => {
@@ -124,6 +533,41 @@ export default function ExecutionConsole() {
     const handleSend = async () => {
         if (!inputValue.trim() || isLoading) return;
 
+        let sessionId = currentSessionId;
+
+        // 如果是新会话的第一条消息，先创建会话
+        if (!sessionId) {
+            const { data, error } = await supabase
+                .from("chat_sessions")
+                .insert([{ title: "新会话" }])
+                .select()
+                .single();
+
+            if (data) {
+                sessionId = data.id;
+                setCurrentSessionId(sessionId);
+            }
+        }
+
+        const mentionedAgent = agents.find((a) =>
+            inputValue.includes(`@${a.name}`)
+        );
+
+        // 严格模式：仅使用已加载的真实 Agent 数据
+        // 如果找不到提及的 Agent，则回退到 CEO Agent
+        const defaultAgent = agents.find((a) => a.identifier === "ceo_agent");
+        const targetAgent = mentionedAgent || defaultAgent;
+        
+        // 如果连默认 CEO 都没有（说明数据未加载或配置错误），则禁止发送
+        if (!targetAgent) {
+            console.error("错误: 无法定位目标智能体，且未找到默认 CEO 智能体。");
+            return;
+        }
+
+        const targetName = targetAgent.name;
+        const targetId = targetAgent.identifier;
+        const targetAvatar = targetAgent.avatar;
+
         const userMsg: Message = {
             id: Date.now().toString(),
             role: "user",
@@ -131,46 +575,115 @@ export default function ExecutionConsole() {
             timestamp: Date.now(),
         };
 
+        const isFirstMessage = messages.length === 0;
         setMessages((prev) => [...prev, userMsg]);
+        const currentInput = inputValue; // 保存当前输入用于总结
         setInputValue("");
         setIsLoading(true);
         setShowAgentMenu(false);
 
-        setTimeout(() => {
-            const mentionedAgent = agents.find((a) =>
-                userMsg.content.includes(`@${a.name}`)
-            );
-            const target = mentionedAgent || null;
+        try {
+            // 并行发起总结请求 (仅针对第一条消息)
+            if (isFirstMessage) {
+                fetch("http://localhost:8000/api/chat/summarize", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ content: currentInput }),
+                })
+                    .then((res) => res.json())
+                    .then(async (data) => {
+                        if (data.title) {
+                            setSessionTitle(data.title);
+                            // 更新数据库中的标题
+                            if (sessionId) {
+                                await supabase
+                                    .from("chat_sessions")
+                                    .update({ title: data.title })
+                                    .eq("id", sessionId);
+                            }
+                        }
+                    })
+                    .catch((err) => console.error("Summarize error:", err));
+            }
 
+            const assistantId = (Date.now() + 1).toString();
             const assistantMsg: Message = {
-                id: (Date.now() + 1).toString(),
+                id: assistantId,
                 role: "assistant",
-                content: target
-                    ? `我是 ${target.name}，已接入全域数据流。正在针对指令进行跨职能建模与逻辑推理...`
-                    : "系统调度协议已启动。正在自动匹配职能智能体矩阵进行任务拆解与协同处理。",
-                agent_name: target?.name || "System",
-                agent_avatar: target?.avatar || "",
-                steps: 4,
+                content: "",
+                agent_name: targetName,
+                agent_avatar: targetAvatar,
+                steps: 0,
                 timestamp: Date.now(),
             };
+
             setMessages((prev) => [...prev, assistantMsg]);
-            setIsLoading(false);
+
+            const response = await fetch(
+                "http://localhost:8000/api/chat/stream",
+                {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        agent_id: targetId,
+                        content: userMsg.content,
+                    }),
+                }
+            );
+
+            if (!response.ok) throw new Error("网络请求失败");
+
+            const reader = response.body?.getReader();
+            if (!reader) throw new Error("流读取器不可用");
+
+            const decoder = new TextDecoder();
+            let accumulatedContent = "";
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                const chunk = decoder.decode(value, { stream: true });
+                accumulatedContent += chunk;
+
+                setMessages((prev) =>
+                    prev.map((msg) =>
+                        msg.id === assistantId
+                            ? { ...msg, content: accumulatedContent }
+                            : msg
+                    )
+                );
+            }
 
             setActiveReport({
                 title: "全域策略执行报告",
-                product: "智能降噪穿戴设备",
+                product: "智能决策输出",
                 status: "Completed",
                 timestamp: new Date().toLocaleTimeString(),
-                details:
-                    "基于 Autonomy 智能体矩阵的多维分析，该业务目标具备高度可行性。建议立即启动跨职能协同流。",
+                details: "基于智能体矩阵的实时分析已完成。",
             });
-        }, 1500);
+        } catch (error) {
+            console.error("Streaming error:", error);
+            setMessages((prev) => [
+                ...prev,
+                {
+                    id: Date.now().toString(),
+                    role: "assistant",
+                    content: "抱歉，系统连接出现异常，请稍后再试。",
+                    agent_name: "System",
+                    timestamp: Date.now(),
+                },
+            ]);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     const startNewSession = () => {
         setMessages([]);
         setActiveReport(null);
         setSessionTitle("新会话");
+        setCurrentSessionId(null);
     };
 
     return (
@@ -213,7 +726,7 @@ export default function ExecutionConsole() {
                         </Button>
                     </header>
 
-                    <div className="p-4 pt-6 flex-1 flex flex-col">
+                    <div className="p-4 pt-6 flex-1 flex flex-col overflow-hidden">
                         <div className="mb-4">
                             <Button
                                 onClick={startNewSession}
@@ -224,29 +737,29 @@ export default function ExecutionConsole() {
                             </Button>
                         </div>
 
-                        <ScrollArea className="flex-1 -mx-2 px-2">
-                            <div className="space-y-1.5">
+                        <ScrollArea className="flex-1 w-full">
+                            <div className="space-y-1.5 w-full">
                                 <div className="px-4 py-2 text-[10px] font-black text-sidebar-foreground/30 uppercase tracking-[0.2em] mb-1">
                                     最近会话
                                 </div>
-                                <button className="w-full text-left p-3.5 px-4 rounded-xl bg-primary/10 border border-primary/20 text-xs font-semibold text-primary flex items-center gap-3 group transition-all ring-1 ring-primary/5">
+                                <button className="w-full max-w-full overflow-hidden text-left p-3.5 px-4 rounded-xl bg-primary/10 border border-primary/20 text-xs font-semibold text-primary flex items-center gap-3 group transition-all ring-1 ring-primary/5">
                                     <MessageSquare
                                         size={14}
-                                        className="text-primary/70"
+                                        className="text-primary/70 shrink-0"
                                     />
-                                    <span className="truncate flex-1">
+                                    <div className="truncate flex-1 max-w-full w-0">
                                         {sessionTitle}
-                                    </span>
-                                    <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                                    </div>
+                                    <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse shrink-0" />
                                 </button>
-                                <button className="w-full text-left p-3.5 px-4 rounded-xl hover:bg-sidebar-accent hover:text-foreground text-xs font-semibold text-sidebar-foreground/50 flex items-center gap-3 group transition-all border border-transparent">
+                                <button className="w-full max-w-full overflow-hidden text-left p-3.5 px-4 rounded-xl hover:bg-sidebar-accent hover:text-foreground text-xs font-semibold text-sidebar-foreground/50 flex items-center gap-3 group transition-all border border-transparent">
                                     <Clock
                                         size={14}
-                                        className="text-sidebar-foreground/30"
+                                        className="text-sidebar-foreground/30 shrink-0"
                                     />
-                                    <span className="truncate">
+                                    <div className="truncate flex-1 max-w-full w-0">
                                         历史分析报告 12/28
-                                    </span>
+                                    </div>
                                 </button>
                             </div>
                         </ScrollArea>
@@ -279,11 +792,26 @@ export default function ExecutionConsole() {
 
             {/* === 2. Current Session Panel === */}
             <section
-                className={`flex flex-col z-40 shrink-0 transition-all duration-300 ease-in-out overflow-hidden bg-background relative ${
-                    isFlowOpen ? "w-[380px]" : "w-0 border-none"
+                style={{ width: isFlowOpen ? `${flowWidth}px` : "0px" }}
+                className={`flex flex-col z-40 shrink-0 bg-background relative h-full overflow-hidden ${
+                    isFlowOpen ? "border-r border-border/40" : "border-none"
+                } ${
+                    !isResizing
+                        ? "transition-[width,border] duration-300 ease-in-out"
+                        : ""
                 }`}
             >
-                <div className="w-[380px] flex flex-col h-full border-r border-border/40">
+                {isFlowOpen && (
+                    <div
+                        className="absolute -right-1 top-0 w-2 h-full cursor-col-resize z-50 hover:bg-primary/30 transition-colors"
+                        onMouseDown={handleMouseDown}
+                    />
+                )}
+                <div
+                    className={`flex flex-col flex-1 min-h-0 ${
+                        !isResizing ? "overflow-hidden" : ""
+                    }`}
+                >
                     <header className="h-12 border-b border-border/40 flex items-center justify-between px-4 shrink-0 bg-background/50 backdrop-blur-md">
                         <div className="flex items-center gap-2">
                             {!isSidebarOpen && (
@@ -291,7 +819,7 @@ export default function ExecutionConsole() {
                                     variant="ghost"
                                     size="icon"
                                     onClick={() => setIsSidebarOpen(true)}
-                                    className="h-8 w-8 text-muted-foreground hover:text-primary"
+                                    className="h-8 w-8 text-muted-foreground hover:text-background"
                                 >
                                     <PanelLeft
                                         size={16}
@@ -301,7 +829,9 @@ export default function ExecutionConsole() {
                             )}
                             <input
                                 value={sessionTitle}
-                                onChange={(e) => setSessionTitle(e.target.value)}
+                                onChange={(e) =>
+                                    setSessionTitle(e.target.value)
+                                }
                                 className="bg-transparent border-none focus:ring-0 p-0 text-[13px] font-bold text-foreground/70 ml-1 focus:outline-none flex-1 min-w-0"
                                 placeholder="输入会话标题..."
                             />
@@ -316,8 +846,8 @@ export default function ExecutionConsole() {
                         </Button>
                     </header>
 
-                    <ScrollArea className="flex-1 bg-muted/5">
-                        <div className="p-6 space-y-8 pb-12">
+                    <ScrollArea className="flex-1 h-0 bg-muted/5">
+                        <div className="p-6 space-y-8 pb-12 max-w-full">
                             {messages.length === 0 && (
                                 <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-1000">
                                     <div className="space-y-4 text-primary">
@@ -365,43 +895,43 @@ export default function ExecutionConsole() {
                                 </div>
                             )}
 
-                            {messages.map((msg) => (
+                            {messages.map((msg, index) => (
                                 <div
                                     key={msg.id}
                                     className="space-y-4 animate-in fade-in duration-500"
                                 >
                                     {msg.role === "assistant" ? (
-                                        <div className="space-y-3">
-                                            <div className="flex items-center gap-2.5">
-                                                <div className="w-6 h-6 rounded-md bg-primary/10 overflow-hidden ring-1 ring-primary/20 flex items-center justify-center">
-                                                    {msg.agent_avatar ? (
-                                                        <img
-                                                            src={
-                                                                msg.agent_avatar
-                                                            }
-                                                            alt={msg.agent_name}
-                                                            className="w-full h-full object-cover"
-                                                        />
-                                                    ) : (
-                                                        <span className="text-[10px] font-bold">
-                                                            {msg.agent_name?.charAt(
-                                                                0
-                                                            )}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                <span className="text-[11px] font-bold uppercase text-foreground/80 tracking-widest">
-                                                    {msg.agent_name}
+                                        <AssistantMessageItem
+                                            msg={msg}
+                                            isLatest={
+                                                index === messages.length - 1
+                                            }
+                                            isLoading={isLoading}
+                                        />
+                                    ) : (
+                                        <div className="flex flex-col items-end space-y-1.5 w-full min-w-0">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-[9px] font-medium text-muted-foreground/40 tabular-nums">
+                                                    {new Date(
+                                                        msg.timestamp
+                                                    ).toLocaleTimeString([], {
+                                                        hour: "2-digit",
+                                                        minute: "2-digit",
+                                                    })}
+                                                </span>
+                                                <span className="text-[10px] font-black text-primary/40 tracking-widest">
+                                                    You
                                                 </span>
                                             </div>
-                                            <div className="text-sm leading-relaxed text-foreground/90 pl-8.5 font-medium border-l-2 border-primary/10 ml-3">
-                                                {msg.content}
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <div className="flex flex-col items-end">
-                                            <div className="bg-primary/5 border border-primary/20 p-4 rounded-2xl rounded-tr-none text-sm font-semibold max-w-[90%] text-primary leading-relaxed shadow-none">
-                                                {msg.content}
+                                            <div className="bg-primary/5 border border-primary/20 p-4 rounded-2xl rounded-tr-none text-sm font-semibold max-w-[90%] text-primary leading-relaxed shadow-none break-all">
+                                                <ReactMarkdown
+                                                    remarkPlugins={[remarkGfm]}
+                                                    components={
+                                                        MarkdownComponents
+                                                    }
+                                                >
+                                                    {msg.content}
+                                                </ReactMarkdown>
                                             </div>
                                         </div>
                                     )}
@@ -412,11 +942,11 @@ export default function ExecutionConsole() {
 
                     <div className="p-6 bg-background relative">
                         {showAgentMenu && (
-                            <Card className="absolute bottom-full left-6 w-56 gap-0 bg-popover/95 backdrop-blur-2xl border-border shadow-2xl p-1 z-50 rounded-xl ring-1 ring-border animate-in slide-in-from-bottom-2">
+                            <Card className="absolute bottom-full left-6 w-56 gap-0 bg-popover/95 backdrop-blur-2xl border-border shadow-2xl p-1 z-50 rounded-xl  animate-in slide-in-from-bottom-2">
                                 <div className="px-2 py-1.5 text-[10px] font-black text-muted-foreground uppercase tracking-widest border-b border-border/50 mb-1">
                                     智能体
                                 </div>
-                                <div className="max-h-48 overflow-y-auto scrollbar-hide">
+                                <div className="max-h-80 overflow-y-auto scrollbar-hide">
                                     {filteredAgents.map((agent, index) => (
                                         <button
                                             key={agent.id}
@@ -434,10 +964,19 @@ export default function ExecutionConsole() {
                                                     className="w-full h-full object-cover"
                                                 />
                                             </div>
-                                            <div className={`text-[11px] font-bold transition-colors truncate ${
-                                                index === selectedIndex ? "text-primary" : "group-hover:text-primary"
-                                            }`}>
-                                                {agent.name}
+                                            <div className="flex flex-col min-w-0">
+                                                <div
+                                                    className={`text-[11px] font-bold transition-colors truncate ${
+                                                        index === selectedIndex
+                                                            ? "text-primary"
+                                                            : "group-hover:text-primary"
+                                                    }`}
+                                                >
+                                                    {agent.name}
+                                                </div>
+                                                <div className="text-[9px] text-muted-foreground/60 font-medium truncate">
+                                                    {agent.role}
+                                                </div>
                                             </div>
                                         </button>
                                     ))}
@@ -448,6 +987,7 @@ export default function ExecutionConsole() {
                             <textarea
                                 ref={textareaRef}
                                 value={inputValue}
+                                disabled={!agents.some(a => a.identifier === "ceo_agent")}
                                 onChange={(e) => {
                                     const val = e.target.value;
                                     setInputValue(val);
@@ -492,20 +1032,35 @@ export default function ExecutionConsole() {
                                     }
                                 }}
                                 onKeyDown={(e) => {
-                                    if (showAgentMenu && filteredAgents.length > 0) {
+                                    if (
+                                        showAgentMenu &&
+                                        filteredAgents.length > 0
+                                    ) {
                                         if (e.key === "ArrowDown") {
                                             e.preventDefault();
-                                            setSelectedIndex((prev) => (prev + 1) % filteredAgents.length);
+                                            setSelectedIndex(
+                                                (prev) =>
+                                                    (prev + 1) %
+                                                    filteredAgents.length
+                                            );
                                             return;
                                         }
                                         if (e.key === "ArrowUp") {
                                             e.preventDefault();
-                                            setSelectedIndex((prev) => (prev - 1 + filteredAgents.length) % filteredAgents.length);
+                                            setSelectedIndex(
+                                                (prev) =>
+                                                    (prev -
+                                                        1 +
+                                                        filteredAgents.length) %
+                                                    filteredAgents.length
+                                            );
                                             return;
                                         }
                                         if (e.key === "Enter") {
                                             e.preventDefault();
-                                            selectAgent(filteredAgents[selectedIndex]);
+                                            selectAgent(
+                                                filteredAgents[selectedIndex]
+                                            );
                                             return;
                                         }
                                         if (e.key === "Escape") {
@@ -515,15 +1070,18 @@ export default function ExecutionConsole() {
                                         }
                                     }
 
-                                    if (e.key === "Enter" && !e.shiftKey) {
-                                        e.preventDefault();
-                                        handleSend();
-                                    }
-                                }}
-                                placeholder="输入指令或使用 @ 呼叫智能体..."
-                                className="w-full bg-transparent border-none focus:ring-0 p-3 text-sm font-medium resize-none min-h-[90px] outline-none placeholder:text-muted-foreground/30 leading-relaxed"
-                            />
-                            <div className="flex items-center justify-between px-2 pb-1.5">
+                                                                            if (e.key === "Enter" && !e.shiftKey) {
+                                                                            e.preventDefault();
+                                                                            handleSend();
+                                                                        }
+                                                                    }}
+                                                                    placeholder={
+                                                                        agents.some((a) => a.identifier === "ceo_agent")
+                                                                            ? "输入指令或使用 @ 呼叫智能体..."
+                                                                            : "正在连接智能体矩阵..."
+                                                                    }
+                                                                    className="w-full bg-transparent border-none focus:ring-0 p-3 text-sm font-medium resize-none min-h-[90px] outline-none placeholder:text-muted-foreground/30 leading-relaxed"
+                                                                />                            <div className="flex items-center justify-between px-2 pb-1.5">
                                 <div className="flex items-center gap-1">
                                     <Button
                                         variant="ghost"
@@ -545,7 +1103,7 @@ export default function ExecutionConsole() {
                                 </div>
                                 <Button
                                     size="icon"
-                                    disabled={!inputValue.trim() || isLoading}
+                                    disabled={!inputValue.trim() || isLoading || !agents.some(a => a.identifier === "ceo_agent")}
                                     onClick={handleSend}
                                     className="h-9 w-9 rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-all"
                                 >
@@ -573,7 +1131,7 @@ export default function ExecutionConsole() {
                                 variant="ghost"
                                 size="icon"
                                 onClick={() => setIsFlowOpen(true)}
-                                className="h-8 w-8 text-muted-foreground hover:text-primary bg-primary/5 transition-colors"
+                                className="h-8 w-8 text-muted-foreground hover:text-background bg-primary/5 transition-colors"
                             >
                                 <PanelLeft size={16} className="rotate-180" />
                             </Button>
@@ -620,9 +1178,9 @@ export default function ExecutionConsole() {
 
                 <main className="flex-1 flex flex-col relative overflow-hidden">
                     <div className="flex-1 flex flex-col bg-card rounded-2xl border border-border/40 shadow-none m-6 overflow-hidden relative animate-in fade-in zoom-in-95 duration-500">
-                        <div className="flex-1 h-0 overflow-y-auto bg-background scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
-                            <div className="p-12 max-w-5xl mx-auto min-h-full flex flex-col">
-                                {activeReport ? (
+                        {activeReport ? (
+                            <ScrollArea className="flex-1 h-0 bg-background">
+                                <div className="p-6 max-w-8xl mx-auto">
                                     <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 space-y-12 pb-12">
                                         <div className="flex items-end justify-between border-b border-border pb-10">
                                             <div className="space-y-5">
@@ -717,29 +1275,24 @@ export default function ExecutionConsole() {
                                             </div>
                                         </Card>
                                     </div>
-                                ) : (
-                                    <div className="flex-1 flex flex-col items-center justify-center text-center space-y-12 opacity-30 grayscale mix-blend-luminosity min-h-[400px]">
-                                        <div className="relative">
-                                            <div className="absolute inset-0 bg-primary/10 blur-[120px] rounded-full scale-150" />
-                                            <div className="w-32 h-32 relative border border-primary/10 bg-card flex items-center justify-center rounded-[48px] shadow-sm">
-                                                <Zap
-                                                    size={64}
-                                                    className="text-primary/40 animate-pulse"
-                                                />
-                                            </div>
-                                        </div>
-                                        <div className="space-y-5">
-                                            <h3 className="text-4xl font-black uppercase tracking-[0.5em] italic text-muted-foreground/20">
-                                                待机中
-                                            </h3>
-                                            <div className="flex items-center justify-center gap-4 text-xs font-black text-muted-foreground/40 uppercase tracking-[0.3em]">
-                                                等待矩阵指令流
-                                            </div>
-                                        </div>
+                                </div>
+                            </ScrollArea>
+                        ) : (
+                            <div className="flex-1 flex flex-col items-center justify-center bg-background text-center space-y-8 opacity-30 grayscale mix-blend-luminosity">
+                                <div className="relative">
+                                    <div className="absolute inset-0 bg-primary/10 blur-[120px] rounded-full scale-150" />
+                                    <div className="relative flex items-center justify-center">
+                                        <Zap
+                                            size={64}
+                                            className="text-primary/40 animate-pulse"
+                                        />
                                     </div>
-                                )}
+                                </div>
+                                <h3 className="text-4xl font-black uppercase tracking-[0.5em] italic text-muted-foreground/20">
+                                    准备就绪
+                                </h3>
                             </div>
-                        </div>
+                        )}
                     </div>
                 </main>
             </div>
