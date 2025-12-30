@@ -19,6 +19,7 @@ import {
 } from "@autonomy/ui/components/tooltip";
 import {
     AtSign,
+    Brain,
     ChevronDown,
     ChevronRight,
     Clock,
@@ -223,6 +224,82 @@ const MarkdownComponents = {
     hr: ({ children }: any) => <hr className="my-6 border-border/20" />,
 };
 
+// --- Todo List Renderer ---
+const PlanTodoView = ({ content }: { content: string }) => {
+    const lines = content.split("\n").filter((line) => line.trim() !== "");
+
+    return (
+        <div className="my-4 bg-primary/5 border border-primary/10 rounded-xl overflow-hidden shadow-sm animate-in fade-in slide-in-from-bottom-2">
+            <div className="bg-primary/10 px-3 py-2 border-b border-primary/10 flex items-center gap-2">
+                <LayoutGrid size={14} className="text-primary" />
+                <span className="text-[10px] font-black uppercase tracking-widest text-primary">
+                    执行计划 (Action Plan)
+                </span>
+            </div>
+            <div className="p-4 space-y-1.5">
+                {lines.map((line, i) => {
+                    // Calculate indentation depth
+                    const indentMatch = line.match(/^(\s*)/);
+                    const indentLevel = indentMatch ? Math.floor(indentMatch[0].length / 2) : 0;
+                    
+                    const trimmedLine = line.trim();
+                    
+                    // Regex to check for explicit todo markers: [ ] or [x]
+                    const isTodoTask = /^[-*+]\s*\[[\sxX]\]/.test(trimmedLine);
+                    const isDone = /^[-*+]\s*\[[xX]\]/.test(trimmedLine);
+                    
+                    // Clean content: remove bullet points and checkboxes
+                    const cleanContent = trimmedLine
+                        .replace(/^[-*+]\s*(\[[\sxX]\])?\s*/, "")
+                        .replace(/^\d+\.\s*/, "");
+
+                    return (
+                        <div
+                            key={i}
+                            className="flex items-start gap-2 group transition-all"
+                            style={{ paddingLeft: `${indentLevel * 0.75}rem` }}
+                        >
+                            {isTodoTask ? (
+                                <div className="mt-1 shrink-0">
+                                    {isDone ? (
+                                        <div className="w-3.5 h-3.5 rounded-full bg-primary flex items-center justify-center shadow-sm">
+                                            <div className="w-1.5 h-1.5 bg-white rounded-full" />
+                                        </div>
+                                    ) : (
+                                        <div className="w-3.5 h-3.5 rounded-full border-2 border-primary/30 group-hover:border-primary/50 transition-colors" />
+                                    )}
+                                </div>
+                            ) : (
+                                // Render a simple bullet for non-task list items, or nothing for plain text
+                                <div className="mt-2 shrink-0 flex justify-center w-3.5">
+                                    <div className="w-1 h-1 rounded-full bg-muted-foreground/30" />
+                                </div>
+                            )}
+                            <div
+                                className={`text-[13px] font-medium leading-relaxed prose-sm prose-primary max-w-none flex-1 ${
+                                    isDone
+                                        ? "text-muted-foreground/50 line-through decoration-primary/20"
+                                        : "text-foreground/80"
+                                }`}
+                            >
+                                <ReactMarkdown 
+                                    remarkPlugins={[remarkGfm]}
+                                    components={{
+                                        p: ({children}) => <span className="inline-block">{children}</span>,
+                                        strong: ({children}) => <strong className="font-bold text-primary/80">{children}</strong>
+                                    }}
+                                >
+                                    {cleanContent}
+                                </ReactMarkdown>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+};
+
 // --- Assistant Message Component ---
 const AssistantMessageItem = ({
     msg,
@@ -233,15 +310,98 @@ const AssistantMessageItem = ({
     isLatest: boolean;
     isLoading: boolean;
 }) => {
-    const [isThinkingExpanded, setIsThinkingExpanded] = useState(true);
+    const [isThinkingExpanded, setIsThinkingExpanded] = useState(false);
+    const [isHovered, setIsHovered] = useState(false);
 
-    // Parse thinking tags: <think>content</think>
-    const thinkMatch = msg.content.match(/<think>([\s\S]*?)<\/think>/);
-    const thinkingContent = thinkMatch ? thinkMatch[1] : null;
-    const mainContent = msg.content
-        .replace(/<think>[\s\S]*?<\/think>/, "")
-        .trim();
+    const content = msg.content || "";
+
+    // Loading State: Show animation if content is empty during loading
+    if (isLatest && isLoading && !content) {
+        return (
+            <div className="space-y-3 w-full min-w-0 animate-in fade-in duration-500">
+                <div className="flex items-center gap-2.5">
+                    <div className="w-6 h-6 rounded-md bg-primary/10 overflow-hidden ring-1 ring-primary/20 flex items-center justify-center">
+                        {msg.agent_avatar ? (
+                            <img
+                                src={msg.agent_avatar}
+                                alt={msg.agent_name}
+                                className="w-full h-full object-cover"
+                            />
+                        ) : (
+                            <span className="text-[10px] font-bold">
+                                {msg.agent_name?.charAt(0)}
+                            </span>
+                        )}
+                    </div>
+                    <span className="text-[11px] font-bold text-foreground/80 tracking-widest">
+                        {msg.agent_name}
+                    </span>
+                </div>
+                <div className="flex items-center gap-2 bg-muted/20 p-4 rounded-2xl w-fit border border-border/40">
+                    <span className="flex gap-1.5 items-center">
+                        <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce [animation-duration:0.8s] [animation-delay:-0.3s]"></span>
+                        <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce [animation-duration:0.8s] [animation-delay:-0.15s]"></span>
+                        <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce [animation-duration:0.8s]"></span>
+                    </span>
+                    <span className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-widest ml-2">
+                        思考中...
+                    </span>
+                </div>
+            </div>
+        );
+    }
+
+    // Tags Parsing Logic
+    const parseTag = (startTag: string, endTag: string) => {
+        const startIdx = content.indexOf(startTag);
+        const endIdx = content.indexOf(endTag);
+        if (startIdx === -1) return null;
+
+        return {
+            content:
+                endIdx !== -1
+                    ? content.substring(startIdx + startTag.length, endIdx)
+                    : content.substring(startIdx + startTag.length),
+            isClosed: endIdx !== -1,
+            startIdx,
+            endIdx,
+        };
+    };
+
+    const think = parseTag("<think>", "</think>");
+    const plan = parseTag("<plan>", "</plan>");
+
     const isStreaming = isLatest && isLoading;
+
+    // Strip tags from main content
+    let mainContent = content;
+    const blocks = [
+        { start: "<think>", end: "</think>" },
+        { start: "<plan>", end: "</plan>" },
+    ];
+
+    blocks.forEach((block) => {
+        const s = mainContent.indexOf(block.start);
+        const e = mainContent.indexOf(block.end);
+        if (s !== -1) {
+            if (e !== -1) {
+                mainContent =
+                    mainContent.substring(0, s) +
+                    mainContent.substring(e + block.end.length);
+            } else {
+                mainContent = mainContent.substring(0, s);
+            }
+        }
+    });
+
+    // --- 预防流式闪烁：隐藏末尾的潜在标签前缀 ---
+    // 如果正文以 '<', '</', '<p', '<t' 等开头或结尾，可能是标签正在到达
+    const partialTagMatch = mainContent.match(/<[\/a-zA-Z0-9]*$/);
+    if (isStreaming && partialTagMatch) {
+        mainContent = mainContent.substring(0, partialTagMatch.index);
+    }
+
+    mainContent = mainContent.trim();
 
     return (
         <div className="space-y-3 w-full min-w-0 overflow-hidden">
@@ -272,26 +432,39 @@ const AssistantMessageItem = ({
                 </span>
             </div>
 
-            {thinkingContent !== null && (
-                <div className="bg-muted/30 rounded-xl overflow-hidden border border-border/40 transition-all w-full min-w-0">
+            {/* --- Thinking Block --- */}
+            {think && (
+                <div
+                    className={`rounded-xl overflow-hidden transition-all w-full min-w-0 ${
+                        isThinkingExpanded
+                            ? "bg-muted/30 border border-border/40"
+                            : "bg-transparent border-transparent"
+                    }`}
+                >
                     <button
                         onClick={() =>
                             setIsThinkingExpanded(!isThinkingExpanded)
                         }
-                        className="w-full flex items-center gap-2 px-3 py-2 hover:bg-muted/50 transition-colors text-[10px] font-bold text-muted-foreground/70 uppercase tracking-tight"
+                        onMouseEnter={() => setIsHovered(true)}
+                        onMouseLeave={() => setIsHovered(false)}
+                        className="flex items-center gap-2 px-1.5 py-1.5 hover:text-foreground/80 transition-colors text-[10px] font-bold text-muted-foreground/70 uppercase tracking-tight"
                     >
-                        {isThinkingExpanded ? (
-                            <ChevronDown size={12} />
-                        ) : (
-                            <ChevronRight size={12} />
-                        )}
-                        <span className="flex-1 text-left">
-                            智能体思考中...
-                        </span>
-                        {isStreaming && (
+                        <div className="w-4 h-4 flex items-center justify-center">
+                            {isHovered ? (
+                                isThinkingExpanded ? (
+                                    <ChevronDown size={14} />
+                                ) : (
+                                    <ChevronRight size={14} />
+                                )
+                            ) : (
+                                <Brain size={14} className="text-primary/60" />
+                            )}
+                        </div>
+                        <span className="flex-1 text-left">深度思考</span>
+                        {isStreaming && !think.isClosed && (
                             <Sparkles
                                 size={10}
-                                className="animate-pulse text-primary/50"
+                                className="animate-pulse text-primary/50 mr-2"
                             />
                         )}
                     </button>
@@ -301,28 +474,34 @@ const AssistantMessageItem = ({
                                 remarkPlugins={[remarkGfm]}
                                 components={MarkdownComponents}
                             >
-                                {thinkingContent || "正在组织逻辑..."}
+                                {think.content || "正在审视上下文..."}
                             </ReactMarkdown>
                         </div>
                     )}
                 </div>
             )}
 
-            <div className="text-sm leading-relaxed text-foreground/90 font-medium relative [&_p]:mb-6 last:[&_p]:mb-0 break-all w-full min-w-0">
-                <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    components={MarkdownComponents}
-                >
-                    {mainContent}
-                </ReactMarkdown>
-                {isStreaming && (
-                    <span className="inline-flex gap-1 ml-1 items-center align-middle">
-                        <span className="w-1 h-1 rounded-full bg-primary animate-bounce [animation-duration:0.8s] [animation-delay:-0.3s]"></span>
-                        <span className="w-1 h-1 rounded-full bg-primary animate-bounce [animation-duration:0.8s] [animation-delay:-0.15s]"></span>
-                        <span className="w-1 h-1 rounded-full bg-primary animate-bounce [animation-duration:0.8s]"></span>
-                    </span>
-                )}
-            </div>
+            {/* --- Action Plan Block --- */}
+            {plan && <PlanTodoView content={plan.content} />}
+
+            {/* --- Main Response --- */}
+            {mainContent && (
+                <div className="text-sm leading-relaxed text-foreground/90 font-medium relative [&_p]:mb-6 last:[&_p]:mb-0 break-all w-full min-w-0">
+                    <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={MarkdownComponents}
+                    >
+                        {mainContent}
+                    </ReactMarkdown>
+                    {isStreaming && (think?.isClosed || !think) && (plan?.isClosed || !plan) && (
+                        <span className="inline-flex gap-1 ml-1 items-center align-middle">
+                            <span className="w-1 h-1 rounded-full bg-primary animate-bounce [animation-duration:0.8s] [animation-delay:-0.3s]"></span>
+                            <span className="w-1 h-1 rounded-full bg-primary animate-bounce [animation-duration:0.8s] [animation-delay:-0.15s]"></span>
+                            <span className="w-1 h-1 rounded-full bg-primary animate-bounce [animation-duration:0.8s]"></span>
+                        </span>
+                    )}
+                </div>
+            )}
         </div>
     );
 };
@@ -582,6 +761,8 @@ export default function ExecutionConsole() {
         setIsLoading(true);
         setShowAgentMenu(false);
 
+        const assistantId = (Date.now() + 1).toString();
+
         try {
             // 并行发起总结请求 (仅针对第一条消息)
             if (isFirstMessage) {
@@ -606,7 +787,6 @@ export default function ExecutionConsole() {
                     .catch((err) => console.error("Summarize error:", err));
             }
 
-            const assistantId = (Date.now() + 1).toString();
             const assistantMsg: Message = {
                 id: assistantId,
                 role: "assistant",
@@ -664,16 +844,17 @@ export default function ExecutionConsole() {
             });
         } catch (error) {
             console.error("Streaming error:", error);
-            setMessages((prev) => [
-                ...prev,
-                {
-                    id: Date.now().toString(),
-                    role: "assistant",
-                    content: "抱歉，系统连接出现异常，请稍后再试。",
-                    agent_name: "System",
-                    timestamp: Date.now(),
-                },
-            ]);
+            setMessages((prev) =>
+                prev.map((msg) =>
+                    msg.id === assistantId
+                        ? {
+                              ...msg,
+                              content:
+                                  "抱歉，系统出现异常，我暂时无法完成此项任务，请稍后再试。",
+                          }
+                        : msg
+                )
+            );
         } finally {
             setIsLoading(false);
         }

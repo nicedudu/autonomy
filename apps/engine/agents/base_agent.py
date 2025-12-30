@@ -119,11 +119,11 @@ class BaseAgent:
         """
         return self.ask_llm_stream(user_input)
 
-    async def chat_stream_async(self, user_input: str):
+    async def chat_stream_async(self, user_input: str, **kwargs):
         """
         在当前任务上下文中继续对话（异步流式）。
         """
-        async for chunk in self.ask_llm_stream_async(user_input):
+        async for chunk in self.ask_llm_stream_async(user_input, **kwargs):
             yield chunk
 
     def ask_llm(self, prompt: str) -> str:
@@ -154,6 +154,10 @@ class BaseAgent:
         self.chat_history.append(
             {"role": "assistant", "content": response.content})
 
+        print(f"\n{'-'*20} [{self.name}] 完整回复 {'-'*20}")
+        print(response.content)
+        print(f"{'-'*60}\n")
+
         return response.content
 
     def request_utility(self, system_prompt: str, user_prompt: str) -> str:
@@ -176,17 +180,20 @@ class BaseAgent:
         messages.extend(self.chat_history)
         messages.append({"role": "user", "content": prompt})
 
+        print(f"\n[{self.name}] 正在思考 (Stream):")
         full_content = ""
         for chunk in self.llm_factory.call_llm_stream(self.agent_id, messages):
+            print(chunk, end="", flush=True)
             full_content += chunk
             yield chunk
+        print("\n")  # 结束换行
 
         # 更新历史记录
         self.chat_history.append({"role": "user", "content": prompt})
         self.chat_history.append(
             {"role": "assistant", "content": full_content})
 
-    async def ask_llm_stream_async(self, prompt: str):
+    async def ask_llm_stream_async(self, prompt: str, **kwargs):
         """
         异步流式模型请求处理。
         """
@@ -195,10 +202,13 @@ class BaseAgent:
         messages.extend(self.chat_history)
         messages.append({"role": "user", "content": prompt})
 
+        print(f"\n[{self.name}] 正在思考 (Async Stream):")
         full_content = ""
-        async for chunk in self.llm_factory.call_llm_stream_async(self.agent_id, messages):
+        async for chunk in self.llm_factory.call_llm_stream_async(self.agent_id, messages, **kwargs):
+            print(chunk, end="", flush=True)
             full_content += chunk
             yield chunk
+        print("\n")  # 结束换行
 
         # 更新历史记录
         self.chat_history.append({"role": "user", "content": prompt})

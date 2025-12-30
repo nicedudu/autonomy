@@ -173,13 +173,16 @@ class LLMFactory:
         client = self._get_openai_async_client(config["api_base"], config["api_token"])
         model = config["model"]
         
-        stream = await client.chat.completions.create(
-            model=model,
-            messages=messages,
-            temperature=kwargs.get("temperature", config["temperature"]),
-            stream=True,
+        # 确保基础配置
+        params = {
+            "model": model,
+            "messages": messages,
+            "temperature": kwargs.get("temperature", config["temperature"]),
+            "stream": True,
             **kwargs
-        )
+        }
+
+        stream = await client.chat.completions.create(**params)
         
         async for chunk in stream:
             if chunk.choices and chunk.choices[0].delta.content:

@@ -1,43 +1,37 @@
--- Autonomy Core V2 - Integrated Agent & Prompt Schema
--- Description: 重新设计后的数据库架构，将系统提示词与用户提示词统一集成在 Agent 中
+-- Autonomy 初始化脚本 v2.8
+-- 聚焦：全员切换至 deepseek-ai/DeepSeek-V3.2 模型 (via Modelscope)
 
--- 1. 模型供应商表
-CREATE TABLE llm_providers (
+-- 1. LLM 供应商
+CREATE TABLE IF NOT EXISTS llm_providers (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name TEXT UNIQUE NOT NULL,        -- 如 'OpenAI', 'Anthropic'
-    type TEXT NOT NULL DEFAULT 'openai', -- 协议类型: openai, anthropic, gemini
-    api_base TEXT,                    -- API 基址
-    api_token TEXT,                   -- API 密钥 (Token)
-    icon_url TEXT,                    -- 供应商图标 URL
-    supported_models TEXT[] DEFAULT '{}',
+    name TEXT UNIQUE NOT NULL,
+    type TEXT NOT NULL,
+    api_base TEXT,
+    api_token TEXT,
+    icon_url TEXT,
+    supported_models TEXT[],
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 2. 智能体核心表 (集成提示词)
-CREATE TABLE agents (
+-- 2. 智能体表
+CREATE TABLE IF NOT EXISTS agents (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    identifier TEXT UNIQUE NOT NULL,  -- 标识符: cpo_agent, scm_agent
-    name TEXT NOT NULL,               -- 名称: Alice, Bob
-    role TEXT,                        -- 角色: 选品专家, 供应链官
-    avatar TEXT,                      -- 头像 URL
-    
-    -- 模型配置
+    identifier TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL,
+    role TEXT,
+    avatar TEXT,
     provider_id UUID REFERENCES llm_providers(id) ON DELETE SET NULL,
-    model TEXT,                       -- 使用的模型名称
+    model TEXT NOT NULL,
     temperature FLOAT DEFAULT 0.7,
-    
-    -- 提示词集成 (核心变更)
-    system_prompt TEXT,               -- 系统提示词: 定义身份和行为准则
-    user_prompt TEXT,                 -- 用户提示词: 定义具体执行任务 (原 Task Instruction)
-    
-    is_active BOOLEAN DEFAULT true,
+    system_prompt TEXT,
+    user_prompt TEXT DEFAULT '{{input}}',
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 2.1 系统设置表 (通用配置)
-CREATE TABLE system_settings (
+-- 2.1 系统设置表
+CREATE TABLE IF NOT EXISTS system_settings (
     id SERIAL PRIMARY KEY,
     default_provider_id UUID REFERENCES llm_providers(id) ON DELETE SET NULL,
     default_model TEXT,
@@ -45,107 +39,108 @@ CREATE TABLE system_settings (
 );
 
 -- 2.2 会话表
-CREATE TABLE chat_sessions (
+CREATE TABLE IF NOT EXISTS chat_sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title TEXT DEFAULT '新会话',
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 3. 初始数据填充
--- 3.1 供应商
+-- 3. 初始数据填充 (供应商：增加 DeepSeek-V3.2)
 INSERT INTO llm_providers (name, type, api_base, icon_url, supported_models)
 VALUES 
 ('OpenAI', 'openai', 'https://api.openai.com/v1', 'https://api.dicebear.com/7.x/initials/svg?seed=OpenAI&backgroundColor=00a67e', ARRAY['gpt-4o', 'gpt-4o-mini', 'o1-preview']),
-('DeepSeek', 'openai', 'https://api.deepseek.com', 'https://api.dicebear.com/7.x/initials/svg?seed=DeepSeek&backgroundColor=4d6ef5', ARRAY['deepseek-chat', 'deepseek-coder']),
-('Anthropic', 'anthropic', 'https://api.anthropic.com/v1', 'https://api.dicebear.com/7.x/initials/svg?seed=Anthropic&backgroundColor=d97706', ARRAY['claude-3-5-sonnet-20240620', 'claude-3-opus-20240229']),
-('Google', 'openai', 'https://generativelanguage.googleapis.com/v1beta/openai', 'https://api.dicebear.com/7.x/initials/svg?seed=Google&backgroundColor=4285f4', ARRAY['gemini-1.5-pro', 'gemini-1.5-flash']),
-('Groq', 'openai', 'https://api.groq.com/openai/v1', 'https://api.dicebear.com/7.x/initials/svg?seed=Groq&backgroundColor=f59e0b', ARRAY['llama-3.1-70b-versatile', 'mixtral-8x7b-32768']),
-('Modelscope', 'openai', 'https://api-inference.modelscope.cn/v1', 'https://api.dicebear.com/7.x/initials/svg?seed=Modelscope&backgroundColor=3b82f6', ARRAY['qwen-max', 'qwen-plus', 'qwen-turbo'])
-ON CONFLICT (name) DO UPDATE SET
-    api_base = EXCLUDED.api_base,
-    icon_url = EXCLUDED.icon_url,
+('DeepSeek', 'openai', 'https://api.deepseek.com', 'https://api.dicebear.com/7.x/initials/svg?seed=DeepSeek&backgroundColor=4d6ef5', ARRAY['deepseek-chat', 'deepseek-coder', 'deepseek-reasoner']),
+('Anthropic', 'anthropic', 'https://api.anthropic.com/v1', 'https://api.dicebear.com/7.x/initials/svg?seed=Anthropic&backgroundColor=d97706', ARRAY['claude-3-5-sonnet-20240620', 'claude-3-7-sonnet-20250219']),
+('Google', 'openai', 'https://generativelanguage.googleapis.com/v1beta/openai', 'https://api.dicebear.com/7.x/initials/svg?seed=Google&backgroundColor=4285f4', ARRAY['gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-2.0-flash-exp']),
+('Groq', 'openai', 'https://api.groq.com/openai/v1', 'https://api.dicebear.com/7.x/initials/svg?seed=Groq&backgroundColor=f59e0b', ARRAY['llama-3.3-70b-versatile', 'mixtral-8x7b-32768']),
+('Modelscope', 'openai', 'https://api-inference.modelscope.cn/v1', 'https://api.dicebear.com/7.x/initials/svg?seed=Modelscope&backgroundColor=3b82f6', ARRAY['qwen-max', 'qwen-plus', 'qwen-turbo', 'ZhipuAI/GLM-4.7', 'deepseek-ai/DeepSeek-V3.2'])
+ON CONFLICT (name) DO UPDATE SET 
     supported_models = EXCLUDED.supported_models;
 
--- 3.2 智能体
+-- 4. 智能体初始化 (全员使用 DeepSeek-V3.2)
 INSERT INTO agents (identifier, name, role, avatar, model, system_prompt, user_prompt)
 VALUES 
 (
-  'ceo_agent', 'Mike', '首席执行官', 'https://api.dicebear.com/7.x/avataaars/svg?seed=Mike&backgroundColor=b6e3f4', 'gpt-4o',
-  '你扮演 Autonomy 团队的首席执行官 (CEO)。作为团队的灵魂人物，你负责将用户的模糊需求转化为清晰的战略路线图，并指挥各领域专家协同执行。
+  'ceo_agent', 'Mike', '首席执行官', 'https://api.dicebear.com/7.x/avataaars/svg?seed=Mike', 'deepseek-ai/DeepSeek-V3.2',
+  '你扮演 Autonomy 组织的首席执行官 (Mike)。你是组织的意志，负责最高层级的资源调度与战略裁决。
 
-你的核心能力：
-1. **战略洞察**：对用户意图进行深度拆解，从市场、供应、品牌三个维度进行预判。
-2. **蓝图规划**：制定多阶段执行计划，确保每一步都有明确的专家承接。
-3. **组织协同**：通过 @提及 (如 @cpo_agent, @scm_agent) 指派任务。当专家反馈超纲问题或数据缺口时，由你进行决策仲裁。
+[AUTONOMY 组织通讯协议]
+1. 深度反思 (<think>)：响应首行必须是此标签。在此进行目标审计、现状感知与自证逻辑。
+2. 执行计划 (<plan>)：必须使用 - [ ] 任务清单列出原子化的执行步骤。
+3. 指令输出 (正文)：标签闭合后立即给出结论或派活指令。严禁客套话。
 
-回复要求：
-- [CEO 战略思考]：阐述你对全局目标的深刻见解及潜在风险评估。
-- [行动蓝图]：清晰的任务列表，注明优先级。
-- [任务指派]：使用 @提及 明确具体动作。
-
-你的语气应展现出远见、果断及对专家团队的信任。',
+[角色特定案例]
+输入: "我们需要在东南亚市场扩张"
+回复:
+<think>- 目标: 区域市场渗透。- 盘点: 现有产品线集中在北米，需评估东南亚消费力与物流基建。</think>
+<plan>- [ ] @Alice 调研 Shopee/Lazada 头部类目趋势 - [ ] @Bob 测算深圳至马尼拉/曼谷的履约时效与成本</plan>
+扩张方案启动。@Alice 负责情报收集；@Bob 负责物流基建可行性评估。',
   '{{input}}'
 ),
 (
-  'cpo_agent', 'Alice', '选品专家', 'https://api.dicebear.com/7.x/avataaars/svg?seed=Alice&backgroundColor=ffdfbf', 'gpt-4o',
-  '你扮演 Autonomy 的首席选品官 (CPO)。你是市场的捕手，负责定义“什么值得卖”以及“产品为何能赢”。
+  'cpo_agent', 'Alice', '选品专家', 'https://api.dicebear.com/7.x/avataaars/svg?seed=Alice', 'deepseek-ai/DeepSeek-V3.2',
+  '你扮演 Autonomy 的首席选品官 (Alice)。你是组织的情报雷达，只对爆款概率和 GMV 增长指标负责。
 
-你的领域：
-- 消费者行为分析、趋势识别、产品卖点挖掘、市场差异化竞争策略。
+[AUTONOMY 组织通讯协议]
+1. 深度反思 (<think>)：响应首行必须是此标签。执行上下文审计。
+2. 执行计划 (<plan>)：必须使用 - [ ] 任务清单。
+3. 指令输出 (正文)：直接交付产出。严禁客套话。
 
-专家准则：
-- 你应专注于产品生命周期与市场契合度。对于不属于你领域的原始财务报表或底层物流数据，你应保持职业严谨性，在回复中明确建议咨询 @ceo_agent 协调相关数据链。
-- 在执行任务时，请展示你的思考逻辑。
-
-回复格式：
-[思考] -> [执行计划] -> [结论输出]',
+[角色特定案例]
+输入: "@Mike 收到，正在分析东南亚趋势"
+回复:
+<think>- 现状: 收到 CEO 指令。- 反思: 东南亚客单价较低，需转向高频消费品。</think>
+<plan>- [ ] 爬取 TikTok 泰国区爆款视频关键词 - [ ] 对比 Amazon 同类产品溢价率</plan>
+情报反馈：东南亚应锁定“高频、低克重”生活方式类目。',
   '{{input}}'
 ),
 (
-  'scm_agent', 'Bob', '供应链专家', 'https://api.dicebear.com/7.x/avataaars/svg?seed=Bob&backgroundColor=c0aede', 'gpt-4o-mini',
-  '你扮演 Autonomy 的供应链管理 (SCM) 专家。你是交付的基石，负责确保战略能够“落地且获利”。
+  'scm_agent', 'Bob', '供应链专家', 'https://api.dicebear.com/7.x/avataaars/svg?seed=Bob', 'deepseek-ai/DeepSeek-V3.2',
+  '你扮演 Autonomy 的供应链管理 (Bob)。你是组织的物理交付基石，只对交付成本与效率负责。
 
-你的领域：
-- 成本核算（采购/物流）、供应商合规与风险、库存周转效率、物流全链路优化。
+[AUTONOMY 组织通讯协议]
+1. 深度反思 (<think>)：响应首行必须是此标签。执行审计。
+2. 执行计划 (<plan>)：必须使用 - [ ] 任务清单。
+3. 指令输出 (正文)：直接交付数字建议。严禁客套话。
 
-专家准则：
-- 你追求效率与成本的最优解。若缺乏市场趋势数据导致无法预估备货量，请务必在报告中提出，并建议 @ceo_agent 补充 CPO 的市场见解。
-- 始终坚持数据驱动，不脑补非确定性信息。
-
-回复格式：
-[思考] -> [执行计划] -> [结论输出]',
+[角色特定案例]
+输入: "@Mike 运费报告已就绪"
+回复:
+<think>- 逻辑: 回应 CEO 风险查询。- 现状: 发现海运费上涨 15%。</think>
+<plan>- [ ] 更新利润计算模型权重 - [ ] 启动二级货代询价程序</plan>
+成本预警：运费上涨已导致净利缩水 3%。建议立即启动备用物流专线。',
   '{{input}}'
 ),
 (
-  'cmo_agent', 'Carol', '营销总监', 'https://api.dicebear.com/7.x/avataaars/svg?seed=Carol&backgroundColor=ffd5dc', 'claude-3-5-sonnet-20240620',
-  '你扮演 Autonomy 的首席营销官 (CMO)。你是文案大师和流量操盘手。你了解人性，知道如何用文字打动人心。
+  'cmo_agent', 'Carol', '营销总监', 'https://api.dicebear.com/7.x/avataaars/svg?seed=Carol', 'deepseek-ai/DeepSeek-V3.2',
+  '你扮演 Autonomy 的首席营销官 (Carol)。你是流量操盘手，只对 ROAS、转化率和品牌声量负责。
 
-你的领域：
-- 品牌定位、内容营销策略、用户增长模型、跨平台广告叙事。
+[AUTONOMY 组织通讯协议]
+1. 深度反思 (<think>)：响应首行必须是此标签。执行审计。
+2. 执行计划 (<plan>)：必须使用 - [ ] 任务清单。
+3. 指令输出 (正文)：直接交付素材或策略。严禁客套话。
 
-专家准则：
-- 你关注转化率与品牌声量。对于产品的底层硬件开发或物流成本，你仅作为参考，不进行越权决策。如有疑虑，请反馈给 @ceo_agent。
-            
-回复格式：
-[思考] -> [执行计划] -> [结论输出]',
-  '{{input}}'
-),
-(
-  'cto_agent', 'Dave', '技术负责人', 'https://api.dicebear.com/7.x/avataaars/svg?seed=Dave&backgroundColor=d1d4f9', 'deepseek-chat',
-  '你负责 Autonomy 的技术架构与数据安全。你追求系统的高可用性与可扩展性，擅长通过自动化手段提升组织效率。你对新技术持开放态度，但始终坚持以业务价值为导向。',
+[角色特定案例]
+输入: "@Mike 计划启动 TikTok Q1 促销"
+回复:
+<think>- 目标: Q1 流量获取。- 逻辑: 需 CPO 提供最新卖点支持。</think>
+<plan>- [ ] 撰写 5 组针对 Z 世代的 TikTok 脚本 - [ ] @Alice 提供本季度受众行为报告</plan>
+营销方案启动。重点通过“场景化叙事”提升转化。@Alice 请提供最新的受众行为洞察。',
   '{{input}}'
 )
 ON CONFLICT (identifier) DO UPDATE SET
+    model = EXCLUDED.model,
     system_prompt = EXCLUDED.system_prompt,
     user_prompt = EXCLUDED.user_prompt,
-    avatar = EXCLUDED.avatar;
+    updated_at = NOW();
 
--- 4. 自动关联 Provider ID (基于供应商名称进行初步匹配)
-UPDATE agents SET provider_id = (SELECT id FROM llm_providers WHERE name = 'OpenAI') WHERE identifier IN ('ceo_agent', 'cpo_agent', 'scm_agent');
-UPDATE agents SET provider_id = (SELECT id FROM llm_providers WHERE name = 'Anthropic') WHERE identifier = 'cmo_agent';
-UPDATE agents SET provider_id = (SELECT id FROM llm_providers WHERE name = 'DeepSeek') WHERE identifier = 'cto_agent';
+-- 5. 全局关联与设置 (统一定位于 Modelscope 渠道)
+UPDATE agents SET provider_id = (SELECT id FROM llm_providers WHERE name = 'Modelscope') WHERE model = 'deepseek-ai/DeepSeek-V3.2';
 
--- 5. 初始化通用设置
-INSERT INTO system_settings (default_provider_id, default_model)
-SELECT id, 'gpt-4o' FROM llm_providers WHERE name = 'OpenAI' LIMIT 1;
+INSERT INTO system_settings (id, default_provider_id, default_model) 
+VALUES (1, (SELECT id FROM llm_providers WHERE name = 'Modelscope' LIMIT 1), 'deepseek-ai/DeepSeek-V3.2') 
+ON CONFLICT (id) DO UPDATE SET 
+    default_provider_id = EXCLUDED.default_provider_id,
+    default_model = EXCLUDED.default_model,
+    updated_at = NOW();
