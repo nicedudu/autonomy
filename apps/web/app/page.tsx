@@ -109,12 +109,11 @@ const MarkdownComponents = {
 
     // --- Enhanced Lists ---
     li: ({ children }: any) => (
-        <li className="flex items-start gap-2 pl-1 mb-1.5">
-            <span className="mt-2 w-1.5 h-1.5 rounded-full bg-black shrink-0" />
-            <span className="flex-1">{children}</span>
+        <li className="mb-1.5 min-w-0 break-all leading-relaxed">
+            {children}
         </li>
     ),
-    ul: ({ children }: any) => <ul className="mb-4 space-y-0.5">{children}</ul>,
+    ul: ({ children }: any) => <ul className="mb-4 space-y-1 list-disc pl-5 marker:text-primary/40">{children}</ul>,
     ol: ({ children }: any) => (
         <ol className="list-decimal pl-5 mb-4 space-y-1.5 marker:text-primary/50 marker:font-mono marker:text-xs">
             {children}
@@ -216,11 +215,22 @@ const MarkdownComponents = {
             {children}
         </a>
     ),
-    strong: ({ children }: any) => (
-        <strong className="font-bold text-foreground antialiased">
-            {children}
-        </strong>
-    ),
+    strong: ({ children }: any) => {
+        const content = String(children);
+        if (content.startsWith("@")) {
+            return (
+                <span className="inline-flex items-center gap-1 text-primary font-bold mx-0.5">
+                    <AtSign size={10} strokeWidth={3} />
+                    {content.substring(1)}
+                </span>
+            );
+        }
+        return (
+            <strong className="font-bold text-foreground antialiased">
+                {children}
+            </strong>
+        );
+    },
     hr: ({ children }: any) => <hr className="my-6 border-border/20" />,
 };
 
@@ -248,10 +258,13 @@ const PlanTodoView = ({ content }: { content: string }) => {
                     const isTodoTask = /^[-*+]\s*\[[\sxX]\]/.test(trimmedLine);
                     const isDone = /^[-*+]\s*\[[xX]\]/.test(trimmedLine);
                     
-                    // Clean content: remove bullet points and checkboxes
+                    // Clean content: remove bullet points, checkboxes and UNWRAP <call> tags
                     const cleanContent = trimmedLine
                         .replace(/^[-*+]\s*(\[[\sxX]\])?\s*/, "")
-                        .replace(/^\d+\.\s*/, "");
+                        .replace(/^\d+\.\s*/, "")
+                        // Unwrap <call> tags but keep content, making the mention bold
+                        .replace(/<call>\s*(@\w+)\s*(.*?)\s*<\/call>/gs, "**$1** $2")
+                        .replace(/<call>\s*(@\w+)?\s*(.*?)$/gs, "**$1** $2"); // Handle streaming
 
                     return (
                         <div
@@ -276,7 +289,7 @@ const PlanTodoView = ({ content }: { content: string }) => {
                                 </div>
                             )}
                             <div
-                                className={`text-[13px] font-medium leading-relaxed prose-sm prose-primary max-w-none flex-1 ${
+                                className={`text-[13px] font-medium leading-relaxed max-w-none flex-1 ${
                                     isDone
                                         ? "text-muted-foreground/50 line-through decoration-primary/20"
                                         : "text-foreground/80"
@@ -285,8 +298,19 @@ const PlanTodoView = ({ content }: { content: string }) => {
                                 <ReactMarkdown 
                                     remarkPlugins={[remarkGfm]}
                                     components={{
-                                        p: ({children}) => <span className="inline-block">{children}</span>,
-                                        strong: ({children}) => <strong className="font-bold text-primary/80">{children}</strong>
+                                        p: ({children}) => <span className="block mb-1 last:mb-0">{children}</span>,
+                                        strong: ({ children }: any) => {
+                                            const content = String(children);
+                                            if (content.startsWith("@")) {
+                                                return (
+                                                    <span className="inline-flex items-center gap-0.5 text-primary font-bold">
+                                                        {content}
+                                                    </span>
+                                                );
+                                            }
+                                            return <strong className="font-black text-foreground">{children}</strong>;
+                                        },
+                                        code: ({children}) => <code className="bg-primary/5 px-1 rounded text-primary/70">{children}</code>
                                     }}
                                 >
                                     {cleanContent}
@@ -351,48 +375,79 @@ const AssistantMessageItem = ({
         );
     }
 
-    // Tags Parsing Logic
-    const parseTag = (startTag: string, endTag: string) => {
-        const startIdx = content.indexOf(startTag);
-        const endIdx = content.indexOf(endTag);
-        if (startIdx === -1) return null;
+    // Tags Parsing Logic - Support multiple blocks
+    const parseAllTags = (startTag: string, endTag: string) => {
+        const results = [];
+        let cursor = 0;
 
-        return {
-            content:
-                endIdx !== -1
-                    ? content.substring(startIdx + startTag.length, endIdx)
-                    : content.substring(startIdx + startTag.length),
-            isClosed: endIdx !== -1,
-            startIdx,
-            endIdx,
-        };
+        while (true) {
+            const startIdx = content.indexOf(startTag, cursor);
+            if (startIdx === -1) break;
+
+            const endIdx = content.indexOf(endTag, startIdx + startTag.length);
+            results.push({
+                content:
+                    endIdx !== -1
+                        ? content.substring(startIdx + startTag.length, endIdx)
+                        : content.substring(startIdx + startTag.length),
+                isClosed: endIdx !== -1,
+                startIdx,
+                endIdx,
+            });
+
+            if (endIdx === -1) break;
+            cursor = endIdx + endTag.length;
+        }
+        return results;
     };
 
-    const think = parseTag("<think>", "</think>");
-    const plan = parseTag("<plan>", "</plan>");
+    const allThoughts = parseAllTags("<thought>", "</thought>");
+    const allPlans = parseAllTags("<plan>", "</plan>");
+
+    // For UI display, we focus on the LATEST block during streaming,
+    // but can show historical ones if needed.
+    const thought = allThoughts[allThoughts.length - 1] || null;
+    const plan = allPlans[allPlans.length - 1] || null;
 
     const isStreaming = isLatest && isLoading;
 
-    // Strip tags from main content
     let mainContent = content;
-    const blocks = [
-        { start: "<think>", end: "</think>" },
+
+    // Strip blocks that have dedicated UI renderers
+    const blocksToHide = [
+        { start: "<thought>", end: "</thought>" },
         { start: "<plan>", end: "</plan>" },
+        { start: "<thinking>", end: "</thinking>" },
     ];
 
-    blocks.forEach((block) => {
-        const s = mainContent.indexOf(block.start);
-        const e = mainContent.indexOf(block.end);
-        if (s !== -1) {
+    blocksToHide.forEach((block) => {
+        while (true) {
+            const s = mainContent.indexOf(block.start);
+            if (s === -1) break;
+            const e = mainContent.indexOf(block.end, s);
             if (e !== -1) {
                 mainContent =
                     mainContent.substring(0, s) +
                     mainContent.substring(e + block.end.length);
             } else {
                 mainContent = mainContent.substring(0, s);
+                break;
             }
         }
     });
+
+    // Special treatment for <call> - convert to highlighted markdown instead of stripping
+    mainContent = mainContent.replace(/<call>\s*(@\w+)\s*(.*?)\s*<\/call>/gs, (match, agent, task) => {
+        return `\n\n> **${agent}** ${task}\n\n`;
+    });
+
+    // Also handle unclosed <call> during streaming
+    const unclosedCall = mainContent.match(/<call>\s*(@\w+)?\s*([^<]*)$/s);
+    if (isStreaming && unclosedCall) {
+        const agent = unclosedCall[1] || "";
+        const task = unclosedCall[2] || "";
+        mainContent = mainContent.substring(0, unclosedCall.index) + `\n\n> **${agent}** ${task}`;
+    }
 
     // --- 预防流式闪烁：隐藏末尾的潜在标签前缀 ---
     // 如果正文以 '<', '</', '<p', '<t' 等开头或结尾，可能是标签正在到达
@@ -433,7 +488,7 @@ const AssistantMessageItem = ({
             </div>
 
             {/* --- Thinking Block --- */}
-            {think && (
+            {thought && (
                 <div
                     className={`rounded-xl overflow-hidden transition-all w-full min-w-0 ${
                         isThinkingExpanded
@@ -457,16 +512,21 @@ const AssistantMessageItem = ({
                                     <ChevronRight size={14} />
                                 )
                             ) : (
-                                <Brain size={14} className="text-primary/60" />
+                                <Brain size={14} className="text-primary/60 animate-pulse" />
                             )}
                         </div>
-                        <span className="flex-1 text-left">深度思考</span>
-                        {isStreaming && !think.isClosed && (
-                            <Sparkles
-                                size={10}
-                                className="animate-pulse text-primary/50 mr-2"
-                            />
-                        )}
+                        <span className="flex-1 text-left flex items-center">
+                            {thought.isClosed ? "深度思考" : (
+                                <>
+                                    深度思考中
+                                    <span className="inline-flex ml-0.5">
+                                        <span className="animate-[pulse_1.5s_infinite] [animation-delay:0s]">.</span>
+                                        <span className="animate-[pulse_1.5s_infinite] [animation-delay:0.3s]">.</span>
+                                        <span className="animate-[pulse_1.5s_infinite] [animation-delay:0.6s]">.</span>
+                                    </span>
+                                </>
+                            )}
+                        </span>
                     </button>
                     {isThinkingExpanded && (
                         <div className="px-4 pb-3 text-xs leading-relaxed text-muted-foreground/60 italic font-medium border-t border-border/20 pt-2 break-all">
@@ -474,7 +534,7 @@ const AssistantMessageItem = ({
                                 remarkPlugins={[remarkGfm]}
                                 components={MarkdownComponents}
                             >
-                                {think.content || "正在审视上下文..."}
+                                {thought.content || "正在审视上下文..."}
                             </ReactMarkdown>
                         </div>
                     )}
@@ -493,7 +553,7 @@ const AssistantMessageItem = ({
                     >
                         {mainContent}
                     </ReactMarkdown>
-                    {isStreaming && (think?.isClosed || !think) && (plan?.isClosed || !plan) && (
+                    {isStreaming && (thought?.isClosed || !thought) && (plan?.isClosed || !plan) && (
                         <span className="inline-flex gap-1 ml-1 items-center align-middle">
                             <span className="w-1 h-1 rounded-full bg-primary animate-bounce [animation-duration:0.8s] [animation-delay:-0.3s]"></span>
                             <span className="w-1 h-1 rounded-full bg-primary animate-bounce [animation-duration:0.8s] [animation-delay:-0.15s]"></span>
@@ -817,22 +877,73 @@ export default function ExecutionConsole() {
             if (!reader) throw new Error("流读取器不可用");
 
             const decoder = new TextDecoder();
-            let accumulatedContent = "";
+            let buffer = "";
+            let currentAssistantId = assistantId;
+            let lastAgentId = targetId;
 
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
 
-                const chunk = decoder.decode(value, { stream: true });
-                accumulatedContent += chunk;
+                buffer += decoder.decode(value, { stream: true });
+                
+                // 处理 JSONL (每行一个 JSON)
+                const lines = buffer.split("\n");
+                buffer = lines.pop() || ""; // 最后一行可能不完整，留到下一轮
 
-                setMessages((prev) =>
-                    prev.map((msg) =>
-                        msg.id === assistantId
-                            ? { ...msg, content: accumulatedContent }
-                            : msg
-                    )
-                );
+                for (const line of lines) {
+                    if (!line.trim()) continue;
+                    try {
+                        const event = JSON.parse(line);
+                        
+                        if (event.type === "stream") {
+                            const newAgentId = event.agent_id;
+                            const chunk = event.content;
+
+                            // 如果 Agent 切换了，创建一个新的消息条目
+                            if (newAgentId && newAgentId !== lastAgentId) {
+                                lastAgentId = newAgentId;
+                                currentAssistantId = (Date.now() + Math.random()).toString();
+                                
+                                const newAgent = agentsRef.current.find(a => a.identifier === newAgentId);
+                                
+                                const newMsg: Message = {
+                                    id: currentAssistantId,
+                                    role: "assistant",
+                                    content: chunk,
+                                    agent_id: newAgentId,
+                                    agent_name: newAgent?.name || newAgentId,
+                                    agent_avatar: newAgent?.avatar || "",
+                                    timestamp: Date.now(),
+                                };
+                                
+                                setMessages(prev => [...prev, newMsg]);
+                            } else {
+                                // 否则，更新当前消息
+                                setMessages((prev) =>
+                                    prev.map((msg) =>
+                                        msg.id === currentAssistantId
+                                            ? { ...msg, content: (msg.content || "") + chunk }
+                                            : msg
+                                    )
+                                );
+                            }
+                        } else if (event.type === "error") {
+                            setMessages((prev) => [
+                                ...prev,
+                                {
+                                    id: Date.now().toString(),
+                                    role: "assistant",
+                                    content: `\n\n[ERROR]: ${event.content}\n`,
+                                    agent_name: "System",
+                                    timestamp: Date.now()
+                                }
+                            ]);
+                        }
+                    } catch (e) {
+                        console.error("解析 JSON 流失败:", e, line);
+                    }
+                }
             }
 
             setActiveReport({

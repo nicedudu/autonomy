@@ -100,18 +100,26 @@ async def get_prompts():
 
 @app.post("/api/chat/stream")
 async def chat_stream(request: Dict[str, Any]):
-    """流式对话接口"""
+    """
+    [Nexus V3] 自主编排流式接口。
+    支持：CEO 发起 -> 多智能体执行循环 -> 结果聚合。
+    """
     agent_id = request.get("agent_id", "ceo_agent")
     content = request.get("content", "")
     
-    agent = get_agent_instance(agent_id)
+    # 确保所有涉及到的智能体都已实例化并注册
+    # 我们预先加载核心矩阵
+    for aid in ["ceo_agent", "cpo_agent", "scm_agent", "cmo_agent"]:
+        try: get_agent_instance(aid)
+        except: pass
     
     async def event_generator():
-        # print(f"DEBUG: [Server层] 开始流式推送，Agent: {agent_id}")
-        async for chunk in agent.chat_stream_async(content):
-            yield chunk
+        # 通过编排器启动自主循环
+        async for event in orchestrator.run_autonomous_loop(agent_id, content):
+            # 发送结构化 JSON，包含类型和内容
+            yield json.dumps(event) + "\n"
 
-    return StreamingResponse(event_generator(), media_type="text/plain")
+    return StreamingResponse(event_generator(), media_type="application/x-ndjson")
 
 @app.get("/api/agents")
 async def get_agents():

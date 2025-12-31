@@ -202,7 +202,10 @@ class BaseAgent:
         messages.extend(self.chat_history)
         messages.append({"role": "user", "content": prompt})
 
-        print(f"\n[{self.name}] 正在思考 (Async Stream):")
+        # 日志记录
+        log_label = "结果反馈" if "专家" in prompt and "已完成任务" in prompt else "正在思考"
+        print(f"\n[{self.name}] {log_label} (Async Stream):")
+        
         full_content = ""
         async for chunk in self.llm_factory.call_llm_stream_async(self.agent_id, messages, **kwargs):
             print(chunk, end="", flush=True)
@@ -210,7 +213,7 @@ class BaseAgent:
             yield chunk
         print("\n")  # 结束换行
 
-        # 更新历史记录
+        # 更新历史记录 (保持上下文连续性)
         self.chat_history.append({"role": "user", "content": prompt})
         self.chat_history.append(
             {"role": "assistant", "content": full_content})
