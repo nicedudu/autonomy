@@ -324,6 +324,46 @@ const PlanTodoView = ({ content }: { content: string }) => {
     );
 };
 
+// --- Skill Action Renderer ---
+const SkillActionView = ({ content, isClosed }: { content: string, isClosed: boolean }) => {
+    let skillId = "未知技能";
+    let params = {};
+    
+    try {
+        const data = JSON.parse(content);
+        skillId = data.skill_id || skillId;
+        params = data.params || {};
+    } catch (e) {
+        // 流式传输中 JSON 可能不完整
+        const idMatch = content.match(/"skill_id"\s*:\s*"([^"]*)"/);
+        if (idMatch) skillId = idMatch[1];
+    }
+
+    return (
+        <div className="my-4 bg-muted/30 border border-border/40 rounded-xl overflow-hidden shadow-sm animate-in fade-in slide-in-from-bottom-2">
+            <div className="bg-muted/50 px-3 py-2 border-b border-border/40 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${isClosed ? 'bg-green-500' : 'bg-amber-500 animate-pulse'}`} />
+                    <span className="text-[10px] font-black uppercase tracking-widest text-foreground/70">
+                        技能执行: {skillId}
+                    </span>
+                </div>
+                {!isClosed && (
+                    <span className="text-[9px] font-mono text-muted-foreground animate-pulse">
+                        EXECUTING...
+                    </span>
+                )}
+            </div>
+            <div className="p-3 font-mono text-[11px] text-muted-foreground/80 bg-black/5 dark:bg-white/5">
+                <div className="flex gap-2">
+                    <span className="text-primary/60">Input:</span>
+                    <span className="break-all">{JSON.stringify(params)}</span>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 // --- Assistant Message Component ---
 const AssistantMessageItem = ({
     msg,
@@ -403,11 +443,13 @@ const AssistantMessageItem = ({
 
     const allThoughts = parseAllTags("<thought>", "</thought>");
     const allPlans = parseAllTags("<plan>", "</plan>");
+    const allActions = parseAllTags("<action>", "</action>");
 
     // For UI display, we focus on the LATEST block during streaming,
     // but can show historical ones if needed.
     const thought = allThoughts[allThoughts.length - 1] || null;
     const plan = allPlans[allPlans.length - 1] || null;
+    const action = allActions[allActions.length - 1] || null;
 
     const isStreaming = isLatest && isLoading;
 
@@ -418,6 +460,7 @@ const AssistantMessageItem = ({
         { start: "<thought>", end: "</thought>" },
         { start: "<plan>", end: "</plan>" },
         { start: "<thinking>", end: "</thinking>" },
+        { start: "<action>", end: "</action>" },
     ];
 
     blocksToHide.forEach((block) => {
@@ -543,6 +586,9 @@ const AssistantMessageItem = ({
 
             {/* --- Action Plan Block --- */}
             {plan && <PlanTodoView content={plan.content} />}
+
+            {/* --- Skill Action Block (Nexus V4) --- */}
+            {action && <SkillActionView content={action.content} isClosed={action.isClosed} />}
 
             {/* --- Main Response --- */}
             {mainContent && (
