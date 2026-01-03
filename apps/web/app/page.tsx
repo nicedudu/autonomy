@@ -326,17 +326,17 @@ const PlanTodoView = ({ content }: { content: string }) => {
 
 // --- Skill Action Renderer ---
 const SkillActionView = ({ content, isClosed }: { content: string, isClosed: boolean }) => {
-    let skillId = "未知技能";
+    let toolName = "未知工具";
     let params = {};
     
     try {
         const data = JSON.parse(content);
-        skillId = data.skill_id || skillId;
+        toolName = data.tool_name || toolName;
         params = data.params || {};
     } catch (e) {
         // 流式传输中 JSON 可能不完整
-        const idMatch = content.match(/"skill_id"\s*:\s*"([^"]*)"/);
-        if (idMatch) skillId = idMatch[1];
+        const nameMatch = content.match(/"tool_name"\s*:\s*"([^"]*)"/);
+        if (nameMatch) toolName = nameMatch[1];
     }
 
     return (
@@ -345,7 +345,7 @@ const SkillActionView = ({ content, isClosed }: { content: string, isClosed: boo
                 <div className="flex items-center gap-2">
                     <div className={`w-2 h-2 rounded-full ${isClosed ? 'bg-green-500' : 'bg-amber-500 animate-pulse'}`} />
                     <span className="text-[10px] font-black uppercase tracking-widest text-foreground/70">
-                        技能执行: {skillId}
+                        工具调用: {toolName}
                     </span>
                 </div>
                 {!isClosed && (
@@ -379,7 +379,7 @@ const AssistantMessageItem = ({
 
     const content = msg.content || "";
 
-    // Loading State: Show animation if content is empty during loading
+    // Loading State: Pure minimalist bouncing dots
     if (isLatest && isLoading && !content) {
         return (
             <div className="space-y-3 w-full min-w-0 animate-in fade-in duration-500">
@@ -401,15 +401,10 @@ const AssistantMessageItem = ({
                         {msg.agent_name}
                     </span>
                 </div>
-                <div className="flex items-center gap-2 bg-muted/20 p-4 rounded-2xl w-fit border border-border/40">
-                    <span className="flex gap-1.5 items-center">
-                        <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce [animation-duration:0.8s] [animation-delay:-0.3s]"></span>
-                        <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce [animation-duration:0.8s] [animation-delay:-0.15s]"></span>
-                        <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce [animation-duration:0.8s]"></span>
-                    </span>
-                    <span className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-widest ml-2">
-                        思考中...
-                    </span>
+                <div className="flex gap-1.5 items-center p-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary/40 animate-bounce [animation-duration:0.8s] [animation-delay:-0.3s]"></span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary/40 animate-bounce [animation-duration:0.8s] [animation-delay:-0.15s]"></span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary/40 animate-bounce [animation-duration:0.8s]"></span>
                 </div>
             </div>
         );
@@ -716,13 +711,21 @@ export default function ExecutionConsole() {
 
     useEffect(() => {
         const fetchAgents = async () => {
-            const { data } = await supabase
-                .from("agents")
-                .select("*")
-                .order("identifier");
-            if (data) {
-                setAgents(data);
-                agentsRef.current = data;
+            try {
+                const response = await fetch("http://localhost:8000/api/agents");
+                if (!response.ok) throw new Error("无法获取智能体列表");
+                const data = await response.json();
+                if (data) {
+                    setAgents(data);
+                    agentsRef.current = data;
+                    
+                    // 自动聚焦输入框 (在 Agent 数据加载后)
+                    setTimeout(() => {
+                        textareaRef.current?.focus();
+                    }, 100);
+                }
+            } catch (err) {
+                console.error("Fetch agents error:", err);
             }
         };
         fetchAgents();
@@ -840,7 +843,7 @@ export default function ExecutionConsole() {
 
         // 严格模式：仅使用已加载的真实 Agent 数据
         // 如果找不到提及的 Agent，则回退到 CEO Agent
-        const defaultAgent = agents.find((a) => a.identifier === "ceo_agent");
+        const defaultAgent = agents.find((a) => a.identifier === "primary_agent");
         const targetAgent = mentionedAgent || defaultAgent;
         
         // 如果连默认 CEO 都没有（说明数据未加载或配置错误），则禁止发送
@@ -1014,6 +1017,10 @@ export default function ExecutionConsole() {
             );
         } finally {
             setIsLoading(false);
+            // 重新聚焦输入框
+            setTimeout(() => {
+                textareaRef.current?.focus();
+            }, 0);
         }
     };
 
@@ -1325,7 +1332,7 @@ export default function ExecutionConsole() {
                             <textarea
                                 ref={textareaRef}
                                 value={inputValue}
-                                disabled={!agents.some(a => a.identifier === "ceo_agent")}
+                                disabled={!agents.some(a => a.identifier === "primary_agent")}
                                 onChange={(e) => {
                                     const val = e.target.value;
                                     setInputValue(val);
@@ -1414,7 +1421,7 @@ export default function ExecutionConsole() {
                                                                         }
                                                                     }}
                                                                     placeholder={
-                                                                        agents.some((a) => a.identifier === "ceo_agent")
+                                                                        agents.some((a) => a.identifier === "primary_agent")
                                                                             ? "输入指令或使用 @ 呼叫智能体..."
                                                                             : "正在连接智能体矩阵..."
                                                                     }
@@ -1441,7 +1448,7 @@ export default function ExecutionConsole() {
                                 </div>
                                 <Button
                                     size="icon"
-                                    disabled={!inputValue.trim() || isLoading || !agents.some(a => a.identifier === "ceo_agent")}
+                                    disabled={!inputValue.trim() || isLoading || !agents.some(a => a.identifier === "primary_agent")}
                                     onClick={handleSend}
                                     className="h-9 w-9 rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-all"
                                 >

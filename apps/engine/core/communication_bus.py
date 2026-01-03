@@ -1,6 +1,5 @@
-from typing import Dict, List, Optional
-import uuid
-from agents.base_agent import Message
+from typing import Any, Dict, List, Optional, Callable
+from core.schema.models import Message
 
 class MeetingRoom:
     """数字会议室"""

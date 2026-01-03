@@ -1,0 +1,40 @@
+@app.get("/api/agents")
+async def get_agents():
+    """获取注册中心所有在线 Agent 列表 (Nexus V4)"""
+    try:
+        manifests = discovery_service.agents.all()
+        # 转换为前端需要的格式
+        return [
+            {
+                "id": m.agent_id,
+                "identifier": m.agent_id,
+                "name": m.name,
+                "role": m.role,
+                "model": m.model,
+                "system_prompt": m.system_prompt_template,
+                "is_manifest": True, # 标记为来自清单文件
+                "avatar": f"https://api.dicebear.com/7.x/avataaars/svg?seed={m.name}"
+            }
+            for m in manifests.values()
+        ]
+    except Exception as e:
+        print(f"获取智能体列表失败: {e}")
+        return []
+
+@app.get("/api/skills")
+async def get_skills():
+    """获取所有可用技能清单"""
+    try:
+        skills = discovery_service.skills.all()
+        return [
+            {
+                "id": s.skill_id,
+                "name": s.name,
+                "description": s.description,
+                "parameters": s.parameters,
+                "implementation": s.implementation
+            }
+            for s in skills.values()
+        ]
+    except Exception as e:
+        return []

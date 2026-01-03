@@ -1,36 +1,41 @@
 # Autonomy 项目演进记录 (Moment) - 2025-12-31
 
-## 1. Nexus V3 体验稳定化 (UI/UX & Prompt)
-### 1.1 前端 UI 深度优化
-- **Markdown 增强**：修复了列表（UL/OL）的渲染间隙，支持原生圆点与数字标识。
-- **思维可视化**：为“深度思考”状态添加了大脑图标呼吸效果和点阵跳动省略号动画。
-- **多智能体流展示**：重构了流式解析逻辑，支持 JSONL 格式。当 `agent_id` 切换时，前端会自动追加新的消息气泡，而非覆盖，实现了真正的“多人会议”感。
-- **Plan 增强**：解决了执行计划中 Markdown 格式不解析的问题，并能正确处理 `<call>` 标签在计划中的展示逻辑。
+## 1. 架构飞跃：Nexus V4 通用智能体引擎 (Manus-like)
+### 1.1 内核领域无关化
+- **去业务化重构**：删除了所有硬编码的 `ceo_agent`, `cpo_agent` 等行业角色类。
+- **通用执行节点**：确立了 `primary_agent` (协调者) 和 `specialist_agent` (执行者) 作为系统基础原型。
+- **配置驱动**：实现了 Agent Manifest (YAML) 与数据库配置的无缝同步，DB 成为生产环境的唯一事实来源。
 
-### 1.2 提示词宪法同步
-- 对 `library.yaml` 进行了微调，强化了执行权归还逻辑。
-- 更新了 Supabase 迁移脚本，确保数据库预置数据与本地提示词资产 100% 字符级同步。
+### 1.2 强大的内置工具链 (Built-in Tools)
+- **Web Search (ddgs)**：参考 Qwen-code 实现了多驱动搜索，默认使用免费的 DuckDuckGo (ddgs)，支持位置参数调用以保证极致的 API 兼容性。
+- **Web Fetch (bs4)**：实现了具备 SSRF 防护和内容降噪（自动过滤导航/页脚）的网页抓取工具，支持智能截断保护上下文窗口。
+- **执行闭环**：实现了 **Thought -> Action (Tool) -> Observation** 的多轮推理循环，工具输出实时通过 [Tool Out] 日志和前端流回传。
 
----
-
-## 2. Nexus V4 模块化架构重构 (核心进化)
-### 2.1 理念引入
-- **借鉴 Qwen-code**：引入了 **上下文快照 (Context Snapshot)** 机制，显著提升了长对话下的 Token 效率。
-- **借鉴 Codex**：确立了 **原子接口协议 (Atomic Interface)**，将智能体协作升级为语义 RPC 调用。
-- **借鉴 Claude Code**：确立了 **Skill-based Manifest** 驱动模式，实现“配置即 Agent”。
-
-### 2.2 关键代码实现
-- **AgentManager**：实现了基于 YAML 清单（Manifest）的智能体自动发现引擎，支持延迟加载（Lazy Loading）。
-- **BaseAgent (Universal Executor)**：重构为通用执行器，内置了 **Thought -> Action -> Observation** 的多轮闭环推理引擎。
-- **SkillManager**：实现了动态技能加载器，支持从外部 Python 模块加载业务逻辑。
-- **严格 RPC 协议**：在 `Orchestrator` 中强制执行 JSON 格式的协作调用，彻底废弃了不稳定的 `@` 语义提及。
+### 1.3 工业级提示词系统 (Prompt Engineering)
+- **分层编译架构**：
+    - **Base Instruction (基础指令)**：定义底层人格、闭环逻辑、JSON RPC 协议和语言对齐准则。
+    - **Role Instruction (角色指令)**：由 Manifest 定义的特定岗位职责。
+- **云端持久化**：将 Base Instruction 迁移至数据库 `system_settings` 表，支持在 Admin 中实时热修改并即时生效。
+- **语言自适应**：Agent 能够识别用户输入语言，并在思考、规划和回复中自动对齐。
 
 ---
 
-## 3. 待办事项 (Next Steps)
-- [ ] **Skill 指令深度集成**：进一步完善 `SkillManager`，支持从 `SKILL.md` 的 Markdown 中提取分步指令注入 Prompt。
-- [ ] **状态机持久化**：将 `Orchestrator` 中的全局共识事实（Facts）持久化到数据库，支持跨会话状态恢复。
-- [ ] **复杂技能测试**：将更多工具（如 SCM Bridge, Profit Calculator）转化为 V4 标准技能。
+## 2. 工程化与体验优化
+### 2.1 稳定性保障 (Resilience)
+- **LLM 异步重试**：为异步流式接口引入了指数退避重试机制，完美解决 429 Rate Limit 问题。
+- **路径鲁棒性**：工具加载器改用基于文件位置的绝对路径寻址，消除了跨平台运行时的路径报错。
+- **类型安全**：将 `agents` 表主键从 UUID 改为语义化 `identifier` (TEXT)，彻底解决了前后端交互时的类型转换冲突。
+
+### 2.2 UI/UX 极致打磨
+- **Admin 升级**：新增“技能中心”可视化页面；智能体配置支持自动继承全局 LLM 设置。
+- **Web 体验**：输入框默认自动获得焦点；Loading 状态简化为极简的点阵跳动动画。
 
 ---
-*记录人：Gemini CLI Agent*
+
+## 3. 未来规划 (Roadmap)
+- [ ] **多模态感知**：集成 Web Vision 技能，支持 Agent 对网页截图进行视觉分析。
+- [ ] **复杂技能沙盒**：实现基于 Docker 或 WebAssembly 的安全代码执行环境。
+- [ ] **组织智力演进**：实现技能的“自动发现与固化”逻辑，允许 Agent 跨会话沉淀经验。
+
+---
+*记录人：Gemini CLI Agent (Nexus V4 Architecture Core)*

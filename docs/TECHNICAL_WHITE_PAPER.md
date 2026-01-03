@@ -1,90 +1,66 @@
-# Autonomy 技术架构白皮书 (v2.0)
+# Autonomy 技术架构白皮书 (Nexus V4 - Universal Architecture)
 
-## 1. 架构总览
+## 1. 核心哲学：从“应用”到“操作系统”
 
-Autonomy 采用 **控制平面 (Control Plane) 与 执行平面 (Execution Plane) 分离** 的微服务架构。系统以 Python 编写的 **Engine** 为核心大脑，通过 WebSocket 和 REST API 与 Next.js 构建的 **Web 终端** 进行实时交互。
+Autonomy 不再是一个特定的垂直领域应用，而是一个**智能体操作系统 (Agent OS)**。它通过解耦认知、能力与环境，实现了对任何商业目标的自主达成。
 
-### 核心组件拓扑
+### 架构拓扑 (Nexus V4)
 
 ```mermaid
 graph TD
-    User[用户/董事长] -->|指令/自然语言| Web[Web 指挥中心 (Next.js)]
-    Web -->|WebSocket (实时流)| Engine[Autonomy Engine (Python/FastAPI)]
-    Web -->|HTTP (配置/管理)| Supabase[Supabase (PostgreSQL)]
+    User[用户] -->|指令| Terminal[Web Console / CLI]
+    Terminal -->|JSON RPC| Orchestrator[任务编排器]
     
-    subgraph "Autonomy Engine"
-        API[API Server] --> Orchestrator[编排器]
-        Orchestrator --> Bus[通信总线 (CommunicationBus)]
+    subgraph "Autonomy OS Kernel"
+        Orchestrator --> Registry[注册中心: Agent & Skill Registry]
+        Orchestrator --> Runtime[运行时: Universal Executor]
         
-        Bus <--> CEO[CEO Agent (调度核心)]
-        Bus <--> CPO[CPO Agent (选品)]
-        Bus <--> SCM[SCM Agent (供应链)]
-        
-        CEO & CPO & SCM --> LLM[LLM Factory]
+        Runtime --> LLM[LLM Factory: GLM-4.7/GPT-4o]
+        Runtime --> Tools[内置工具集: Web Search/Fetch]
+        Runtime --> Skills[业务技能包: Domain Specific]
     end
     
-    LLM -->|API Call| OpenAI/Anthropic/DeepSeek
-    Engine -->|Config Sync| Supabase
+    Registry -->|YAML Manifest| AgentConfig[智能体清单]
+    Registry -->|SKILL.md| SkillConfig[技能清单]
 ```
 
 ---
 
-## 2. 智能体核心机制 (Agent Internals)
+## 2. 关键组件深度解析
 
-### 2.1 调度与分发 (The Dispatch System)
+### 2.1 声明式注册中心 (Resource Registry)
+系统采用 **“配置即能力”** 的模式。
+*   **Agent Manifest**: 使用 YAML 定义智能体的原型（如 `primary_agent`），包含其角色偏好、授权技能集和默认模型。
+*   **Skill Manifest**: 技能作为自描述单元存在，包含元数据定义、参数 Schema 和物理执行脚本路径。
 
-在 v2.0 架构中，我们确立了 **以 CEO 为绝对核心** 的调度体系。
+### 2.2 通用执行器 (Universal Agent Runtime)
+核心引擎 `AgentRuntime` 负责管理单个节点的生命周期：
+1.  **Thought**: 驱动 LLM 进行意图审计与环境映射。
+2.  **Plan**: 维护动态任务清单，实现过程透明。
+3.  **Action**: 拦截流中的结构化标签，通过 `importlib` 动态加载并执行工具。
+4.  **Observation**: 捕获执行结果，通过标准化的 SUCCESS/FAILED 状态机反馈给模型进行下一轮迭代。
 
-*   **入口收敛**：所有用户指令默认路由至 `CEO Agent`。
-*   **语义分发**：CEO 解析指令，识别需介入的专家（如“选品”-> CPO），通过 `@mention` 机制在内部总线上发布任务。
-*   **任务委托 (Delegation)**：系统监听 CEO 的输出流，实时捕获 `@agent_id` 标签，自动触发 `task_delegation` 事件唤醒子 Agent。
-
-### 2.2 思考引擎 (Reasoning Engine)
-
-每个 Agent 内部运行一个 **ReAct (Reason + Act)** 循环：
-1.  **Thought**：基于当前观测，进行内心独白与逻辑推演。
-2.  **Plan**：拆解下一步动作（调用工具或回复消息）。
-3.  **Action**：执行具体的 API 调用或数据库查询。
-4.  **Observation**：获取执行结果，修正下一步计划。
-
-### 2.3 模型工厂 (LLM Factory)
-
-为了平衡成本与能力，Engine 内置了动态 LLM 路由层：
-*   **多供应商支持**：原生适配 OpenAI (GPT-4o), Anthropic (Claude 3.5 Sonnet), DeepSeek。
-*   **角色适配**：
-    *   **CEO/CPO**：默认使用高推理能力的 GPT-4o 或 Claude 3.5。
-    *   **SCM/客服**：使用高性价比模型处理标准化任务。
-*   **流式异步**：底层完全基于 `asyncio`，确保 Token 级实时传输。
+### 2.3 结构化通讯协议 (Structural RPC)
+废弃语义化提及，强制执行严格的 JSON 协作：
+*   **`<call>`**: 用于 Agent 间的委派，支持 context 状态传递。
+*   **`<action>`**: 用于动用内置工具或授权技能。
 
 ---
 
-## 3. 通信与交互 (Communication Layer)
+## 3. 安全与隔离 (Sandboxing)
 
-### 3.1 实时流式传输 (Real-time Streaming)
-Engine 端实现了全链路的异步流式传输，移除了所有同步 I/O 阻塞：
-*   **LLM 流**：模型生成的文本实时推送到前端。
-*   **总线流**：Agent 间的协作消息（如 CEO 指派 CPO）通过 WebSocket 广播，用户可实时“旁听”数字员工的会议。
-
-### 3.2 数据协议
-*   **Message Model**：定义了 `sender`, `recipient`, `subject`, `content` 的标准结构。
-*   **Markdown渲染**：前端利用 `TextDecoder` 和 Markdown 组件，支持复杂的思考标签 `<think>` 折叠显示，提供透明的决策解释性。
+*   **路径锁定**: 所有文件操作强制使用绝对路径，严禁跨越授权目录。
+*   **权限最小化**: Agent 仅能感知其 Manifest 中显式声明的 Skills。
+*   **SSRF 防护**: 内置工具具备基础的网络隔离能力，防止内网穿透。
 
 ---
 
-## 4. 数据与配置中心 (Data Layer)
+## 4. 生产级提示词系统
 
-利用 **Supabase (PostgreSQL)** 实现“配置即代码”：
-
-*   **Prompt 热更新**：Agent 的 System Prompt 存储在云端，调整人设无需重启服务。
-*   **长期记忆 (Long-term Memory)**：
-    *   **知识库**：存储历史选品报告、供应商白名单。
-    *   **会话记录**：持久化聊天历史，支持跨 Session 的上下文记忆。
+系统提示词采用分层编译模式，在运行时动态合成：
+1.  **Base Instruction**: 定义底层人格、安全边界与通讯协议。由 Admin 全局配置。
+2.  **Role Instruction**: 注入智能体特有的身份与职责描述（Manifest）。
+3.  **Dynamic Context**: 实时注入当前 Agent 拥有的技能文档与上下文快照。
 
 ---
-
-## 5. 扩展性设计
-
-*   **插件化 Agent**：新的 Agent 只需继承 `BaseAgent` 并注册到数据库，Engine 重启后即可自动装载。
-*   **工具标准化 (MCP)**：工具层遵循 Model Context Protocol，提供标准化的 `input_schema`，便于 LLM 精准调用。
-
-*最后更新: 2025-12-30*
+*Last Updated: 2025-12-31*

@@ -9,13 +9,11 @@ from typing import List, Dict, Any
 from core.supabase_manager import SupabaseManager
 from core.orchestrator import Orchestrator
 from core.llm_factory import LLMFactory
-from agents.ceo_agent import CEOAgent
-from agents.cpo_agent import CPOAgent
-from agents.scm_agent import SCMAgent
+from core.registry.manager import discovery_service
 
 app = FastAPI(title="Autonomy Control Plane")
 
-# 允许跨域，方便 Next.js 访问
+# 允许跨域
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -28,8 +26,6 @@ orchestrator = Orchestrator()
 
 # 将通信总线的消息转发到 WebSocket 广播
 def bus_to_ui_callback(message):
-    # 使用 asyncio.create_task 触发异步广播
-    # 注意：在 FastAPI 中需要确保在事件循环运行期间调用
     try:
         loop = asyncio.get_event_loop()
         if loop.is_running():
@@ -39,36 +35,7 @@ def bus_to_ui_callback(message):
 
 orchestrator.bus.set_on_message_callback(bus_to_ui_callback)
 
-agent_instances: Dict[str, Any] = {}
 supabase_manager = SupabaseManager()
-
-def get_agent_instance(agent_id: str):
-    if agent_id not in agent_instances:
-        # 从 Supabase 获取配置以确认 Agent 存在并获取基本信息
-        config = supabase_manager.get_agent_config(agent_id)
-        if not config:
-            raise ValueError(f"智能体 {agent_id} 未在数据库中配置")
-        
-        name = config.get("name", "智能助手")
-        
-        agent = None
-        # 根据 identifier 决定使用的类
-        if "ceo" in agent_id:
-            agent = CEOAgent(agent_id=agent_id, name=name)
-        elif "cpo" in agent_id:
-            agent = CPOAgent(agent_id=agent_id, name=name)
-        elif "scm" in agent_id:
-            agent = SCMAgent(agent_id=agent_id, name=name)
-        else:
-            # 默认使用 BaseAgent
-            from agents.base_agent import BaseAgent
-            agent = BaseAgent(agent_id=agent_id, agent_type="general", name=name)
-        
-        if agent:
-            orchestrator.register_agent(agent)
-            agent_instances[agent_id] = agent
-            
-    return agent_instances[agent_id]
 
 class ConnectionManager:
     """管理 WebSocket 连接，实现实时广播"""
@@ -83,7 +50,6 @@ class ConnectionManager:
         self.active_connections.remove(websocket)
 
     async def broadcast(self, message: Dict[str, Any]):
-        """向所有前端页面发送数据"""
         for connection in self.active_connections:
             try:
                 await connection.send_json(message)
@@ -94,95 +60,115 @@ manager = ConnectionManager()
 
 @app.get("/api/prompts")
 async def get_prompts():
-    """读取 Prompt 库供前端展示"""
-    with open("prompts/library.yaml", "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+    """获取云端全局提示词配置 (Nexus V4)"""
+    try:
+        settings = supabase_manager.get_system_settings()
+        return {
+            "core_system_prompt": settings.get("core_system_prompt", ""),
+            "default_model": settings.get("default_model", "")
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.post("/api/prompts/save")
+async def save_prompts(config: Dict[str, Any]):
+    """将前端修改后的 Prompt 保存到云端数据库"""
+    try:
+        core_prompt = config.get("core_system_prompt")
+        if core_prompt:
+            supabase_manager.client.table("system_settings").update({
+                "core_system_prompt": core_prompt,
+                "updated_at": "now()"
+            }).eq("id", 1).execute()
+        return {"status": "success"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 @app.post("/api/chat/stream")
 async def chat_stream(request: Dict[str, Any]):
     """
-    [Nexus V3] 自主编排流式接口。
-    支持：CEO 发起 -> 多智能体执行循环 -> 结果聚合。
+    [Nexus V4] Universal Stream Interface.
     """
-    agent_id = request.get("agent_id", "ceo_agent")
+    agent_id = request.get("agent_id", "primary_agent")
     content = request.get("content", "")
     
-    # 确保所有涉及到的智能体都已实例化并注册
-    # 我们预先加载核心矩阵
-    for aid in ["ceo_agent", "cpo_agent", "scm_agent", "cmo_agent"]:
-        try: get_agent_instance(aid)
-        except: pass
-    
     async def event_generator():
-        # 通过编排器启动自主循环
-        async for event in orchestrator.run_autonomous_loop(agent_id, content):
-            # 发送结构化 JSON，包含类型和内容
+        async for event in orchestrator.dispatch(agent_id, content):
             yield json.dumps(event) + "\n"
 
     return StreamingResponse(event_generator(), media_type="application/x-ndjson")
 
 @app.get("/api/agents")
 async def get_agents():
-    """获取所有在线 Agent 列表"""
+    """获取注册中心所有在线 Agent 列表 (Nexus V4)"""
     try:
-        response = supabase_manager.client.table("agents").select("*").execute()
-        return response.data
+        manifests = discovery_service.agents.all()
+        return [
+            {
+                "id": m.agent_id,
+                "identifier": m.agent_id,
+                "name": m.name,
+                "role": m.role,
+                "model": m.model,
+                "system_prompt": m.system_prompt_template,
+                "is_manifest": True,
+                "avatar": f"https://api.dicebear.com/7.x/avataaars/svg?seed={m.name}"
+            }
+            for m in manifests.values()
+        ]
     except Exception as e:
         print(f"获取智能体列表失败: {e}")
         return []
 
-
-@app.post("/api/prompts/save")
-async def save_prompts(config: Dict[str, Any]):
-    """从前端保存修改后的 Prompt"""
-    with open("prompts/library.yaml", "w", encoding="utf-8") as f:
-        yaml.safe_dump(config, f, allow_unicode=True)
-    return {"status": "success"}
+@app.get("/api/skills")
+async def get_skills():
+    """获取所有可用技能清单"""
+    try:
+        skills = discovery_service.skills.all()
+        return [
+            {
+                "id": s.skill_id,
+                "name": s.name,
+                "description": s.description,
+                "parameters": s.parameters,
+                "implementation": s.implementation
+            }
+            for s in skills.values()
+        ]
+    except Exception as e:
+        return []
 
 @app.post("/api/chat/summarize")
 async def summarize_chat(request: Dict[str, Any]):
-    """生成会话总结标题"""
+    """生成会话总结标题 (严格数据库驱动)"""
     content = request.get("content", "")
     if not content:
         return {"title": "新会话"}
     
     try:
-        # 获取专用总结提示词
-        with open("prompts/library.yaml", "r", encoding="utf-8") as f:
-            lib = yaml.safe_load(f)
-            summarizer_config = lib.get("utils", {}).get("summarizer", {})
-            system_prompt = summarizer_config.get("system", "Summarize the following into a short title.")
-
-        # 统一使用全局通用 LLM 配置执行总结任务
         llm_factory = LLMFactory()
+        system_prompt = "You are a professional secretary. Summarize the user's intent into a title under 10 words. Chinese if the input is Chinese."
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": content}
         ]
         response = llm_factory.call_default_llm(messages)
         summary = response.content
-        
         title = summary.strip().strip('"').strip("'")
-        if len(title) > 50:
-            title = title[:47] + "..."
-            
+        if len(title) > 50: title = title[:47] + "..."
         return {"title": title}
     except Exception as e:
-        print(f"总结失败: {e}")
         return {"title": "新会话"}
 
 @app.websocket("/ws/ops")
 async def websocket_endpoint(websocket: WebSocket):
-    """运营数据实时流"""
     await manager.connect(websocket)
     try:
         while True:
-            # 保持连接，等待心跳或来自客户端的消息
-            data = await websocket.receive_text()
+            await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 
-# 工具函数：供后端其他组件调用以推送数据
 async def emit_event(event_type: str, data: Any):
     await manager.broadcast({
         "type": event_type,

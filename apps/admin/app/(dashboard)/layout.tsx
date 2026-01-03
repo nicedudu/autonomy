@@ -1,7 +1,7 @@
 "use client";
 
 import { ModeToggle } from "@autonomy/ui/components/mode-toggle";
-import { Globe2, Settings, Users } from "lucide-react";
+import { Globe2, Settings, Users, Hammer } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import React from "react";
@@ -15,6 +15,7 @@ export default function DashboardLayout({
 
     const menuItems = [
         { name: "智能体", href: "/agents", icon: Users },
+        { name: "技能中心", href: "/skills", icon: Hammer },
         { name: "模型配置", href: "/providers", icon: Globe2 },
     ];
 

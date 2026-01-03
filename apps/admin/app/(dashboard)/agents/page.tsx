@@ -33,33 +33,39 @@ export default function AdminAgentsThemeAligned() {
     const [generalConfig, setGeneralConfig] = useState({
         provider_id: "",
         model: "",
+        core_system_prompt: "",
     });
 
     const fetchData = async () => {
         setLoading(true);
-        const { data: agentsData } = await supabase
-            .from("agents")
-            .select("*")
-            .order("identifier");
-        const { data: providersData } = await supabase
-            .from("llm_providers")
-            .select("*");
-        const { data: settingsData } = await supabase
-            .from("system_settings")
-            .select("*")
-            .single();
+        try {
+            // 优先获取注册中心与数据库合并后的智能体列表
+            const agentsRes = await fetch("http://localhost:8000/api/agents");
+            const agentsData = await agentsRes.json();
+            
+            const { data: providersData } = await supabase
+                .from("llm_providers")
+                .select("*");
+            const { data: settingsData } = await supabase
+                .from("system_settings")
+                .select("*")
+                .single();
 
-        if (agentsData) setAgents(agentsData);
-        if (providersData) setProviders(providersData);
-        if (settingsData) {
-            setGeneralConfig({
-                provider_id: settingsData.default_provider_id,
-                model: settingsData.default_model,
-            });
-        }
+            if (agentsData) setAgents(agentsData);
+            if (providersData) setProviders(providersData);
+            if (settingsData) {
+                setGeneralConfig({
+                    provider_id: settingsData.default_provider_id,
+                    model: settingsData.default_model,
+                    core_system_prompt: settingsData.core_system_prompt || "",
+                });
+            }
 
-        if (agentsData && agentsData.length > 0 && !selectedAgent) {
-            setSelectedAgent(agentsData[0]);
+            if (agentsData && agentsData.length > 0 && !selectedAgent) {
+                setSelectedAgent(agentsData[0]);
+            }
+        } catch (err) {
+            console.error("Admin fetch error:", err);
         }
         setLoading(false);
     };
@@ -100,6 +106,7 @@ export default function AdminAgentsThemeAligned() {
                 .update({
                     default_provider_id: generalConfig.provider_id,
                     default_model: generalConfig.model,
+                    core_system_prompt: generalConfig.core_system_prompt,
                     updated_at: new Date().toISOString(),
                 })
                 .eq("id", 1); // Assumes single row with ID 1
@@ -114,7 +121,7 @@ export default function AdminAgentsThemeAligned() {
                     user_prompt: selectedAgent.user_prompt,
                     temperature: selectedAgent.temperature,
                 })
-                .eq("id", selectedAgent.id);
+                .eq("identifier", selectedAgent.identifier); // 直接使用 identifier 匹配主键
             error = agentError;
         }
 
@@ -337,6 +344,30 @@ export default function AdminAgentsThemeAligned() {
                                     </Card>
                                 </section>
 
+                                {/* 2. Base System Prompt */}
+                                <section className="space-y-4">
+                                    <div className="flex items-center gap-2 text-foreground">
+                                        <Terminal
+                                            size={14}
+                                            className="text-primary"
+                                        />
+                                        <h3 className="text-xs font-bold uppercase tracking-wider">
+                                            基础系统指令 (Base System Prompt)
+                                        </h3>
+                                    </div>
+                                    <Textarea
+                                        value={generalConfig.core_system_prompt}
+                                        onChange={(e) =>
+                                            setGeneralConfig({
+                                                ...generalConfig,
+                                                core_system_prompt: e.target.value,
+                                            })
+                                        }
+                                        className="w-full h-[600px] bg-background border-border rounded-xl p-4 text-sm leading-relaxed font-mono shadow-none"
+                                        placeholder="在此定义所有智能体必须遵循的基础认知逻辑与通讯协议..."
+                                    />
+                                </section>
+
                                 <div className="flex justify-end pt-6">
                                     <Button
                                         onClick={handleSave}
@@ -397,7 +428,7 @@ export default function AdminAgentsThemeAligned() {
                                                 </Label>
                                                 <Select
                                                     value={
-                                                        selectedAgent.provider_id
+                                                        selectedAgent.provider_id || generalConfig.provider_id
                                                     }
                                                     onValueChange={(val) =>
                                                         setSelectedAgent({
@@ -426,7 +457,7 @@ export default function AdminAgentsThemeAligned() {
                                                     模型选择
                                                 </Label>
                                                 <Select
-                                                    value={selectedAgent.model}
+                                                    value={selectedAgent.model || generalConfig.model}
                                                     onValueChange={(val) =>
                                                         setSelectedAgent({
                                                             ...selectedAgent,
@@ -438,15 +469,18 @@ export default function AdminAgentsThemeAligned() {
                                                         <SelectValue placeholder="选择模型" />
                                                     </SelectTrigger>
                                                     <SelectContent className="border-border">
-                                                        {availableModels.map(
-                                                            (m: string) => (
-                                                                <SelectItem
-                                                                    key={m}
-                                                                    value={m}
-                                                                >
+                                                        {availableModels.length > 0 ? (
+                                                            availableModels.map((m: string) => (
+                                                                <SelectItem key={m} value={m}>
                                                                     {m}
                                                                 </SelectItem>
-                                                            )
+                                                            ))
+                                                        ) : (
+                                                            generalAvailableModels.map((m: string) => (
+                                                                <SelectItem key={m} value={m}>
+                                                                    {m}
+                                                                </SelectItem>
+                                                            ))
                                                         )}
                                                     </SelectContent>
                                                 </Select>

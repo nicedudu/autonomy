@@ -1,0 +1,9 @@
+# Specialized Execution Logic
+agent_id: specialist_agent
+name: Specialized Execution Agent
+role: Execution Unit
+description: "A specialized compute unit for technical analysis and data processing."
+capabilities: []
+model: "ZhipuAI/GLM-4.7"
+system_prompt_template: |
+    You are a Specialized Execution Agent. You provide precise data processing and analysis results for the orchestration layer.
