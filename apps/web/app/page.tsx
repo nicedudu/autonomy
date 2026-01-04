@@ -142,8 +142,8 @@ const MarkdownComponents = {
             try {
                 const jsonStr = String(children).replace(/\n$/, "");
                 if (
-                    jsonStr.includes('"chartType"') &&
-                    jsonStr.includes('"data"')
+                    jsonStr.includes("chartType") &&
+                    jsonStr.includes("data")
                 ) {
                     const data = JSON.parse(jsonStr);
                     if (data.chartType && data.data)
@@ -248,23 +248,18 @@ const PlanTodoView = ({ content }: { content: string }) => {
             </div>
             <div className="p-4 space-y-1.5">
                 {lines.map((line, i) => {
-                    // Calculate indentation depth
                     const indentMatch = line.match(/^(\s*)/);
                     const indentLevel = indentMatch ? Math.floor(indentMatch[0].length / 2) : 0;
-                    
                     const trimmedLine = line.trim();
-                    
-                    // Regex to check for explicit todo markers: [ ] or [x]
-                    const isTodoTask = /^[-*+]\s*\[[\sxX]\]/.test(trimmedLine);
+                    const isTodoTask = /^[-*+]\s*\[[\sxX\/]\]/.test(trimmedLine);
                     const isDone = /^[-*+]\s*\[[xX]\]/.test(trimmedLine);
+                    const isInProgress = /^[-*+]\s*\[\/\]/.test(trimmedLine);
                     
-                    // Clean content: remove bullet points, checkboxes and UNWRAP <call> tags
                     const cleanContent = trimmedLine
-                        .replace(/^[-*+]\s*(\[[\sxX]\])?\s*/, "")
+                        .replace(/^[-*+]\s*(\[[\sxX\/]\])?\s*/, "")
                         .replace(/^\d+\.\s*/, "")
-                        // Unwrap <call> tags but keep content, making the mention bold
                         .replace(/<call>\s*(@\w+)\s*(.*?)\s*<\/call>/gs, "**$1** $2")
-                        .replace(/<call>\s*(@\w+)?\s*(.*?)$/gs, "**$1** $2"); // Handle streaming
+                        .replace(/<call>\s*(@\w+)?\s*(.*?)$/gs, "**$1** $2");
 
                     return (
                         <div
@@ -278,22 +273,21 @@ const PlanTodoView = ({ content }: { content: string }) => {
                                         <div className="w-3.5 h-3.5 rounded-full bg-primary flex items-center justify-center shadow-sm">
                                             <div className="w-1.5 h-1.5 bg-white rounded-full" />
                                         </div>
+                                    ) : isInProgress ? (
+                                        <div className="w-3.5 h-3.5 rounded-full border-2 border-primary flex items-center justify-center animate-pulse">
+                                            <div className="w-1.5 h-1.5 bg-primary rounded-full animate-ping" />
+                                        </div>
                                     ) : (
                                         <div className="w-3.5 h-3.5 rounded-full border-2 border-primary/30 group-hover:border-primary/50 transition-colors" />
                                     )}
                                 </div>
                             ) : (
-                                // Render a simple bullet for non-task list items, or nothing for plain text
                                 <div className="mt-2 shrink-0 flex justify-center w-3.5">
                                     <div className="w-1 h-1 rounded-full bg-muted-foreground/30" />
                                 </div>
                             )}
                             <div
-                                className={`text-[13px] font-medium leading-relaxed max-w-none flex-1 ${
-                                    isDone
-                                        ? "text-muted-foreground/50 line-through decoration-primary/20"
-                                        : "text-foreground/80"
-                                }`}
+                                className={`text-[13px] font-medium leading-relaxed max-w-none flex-1 ${isDone ? "text-muted-foreground/50 line-through decoration-primary/20" : isInProgress ? "text-primary font-bold" : "text-foreground/80"}`}
                             >
                                 <ReactMarkdown 
                                     remarkPlugins={[remarkGfm]}
@@ -324,46 +318,6 @@ const PlanTodoView = ({ content }: { content: string }) => {
     );
 };
 
-// --- Skill Action Renderer ---
-const SkillActionView = ({ content, isClosed }: { content: string, isClosed: boolean }) => {
-    let toolName = "未知工具";
-    let params = {};
-    
-    try {
-        const data = JSON.parse(content);
-        toolName = data.tool_name || toolName;
-        params = data.params || {};
-    } catch (e) {
-        // 流式传输中 JSON 可能不完整
-        const nameMatch = content.match(/"tool_name"\s*:\s*"([^"]*)"/);
-        if (nameMatch) toolName = nameMatch[1];
-    }
-
-    return (
-        <div className="my-4 bg-muted/30 border border-border/40 rounded-xl overflow-hidden shadow-sm animate-in fade-in slide-in-from-bottom-2">
-            <div className="bg-muted/50 px-3 py-2 border-b border-border/40 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full ${isClosed ? 'bg-green-500' : 'bg-amber-500 animate-pulse'}`} />
-                    <span className="text-[10px] font-black uppercase tracking-widest text-foreground/70">
-                        工具调用: {toolName}
-                    </span>
-                </div>
-                {!isClosed && (
-                    <span className="text-[9px] font-mono text-muted-foreground animate-pulse">
-                        EXECUTING...
-                    </span>
-                )}
-            </div>
-            <div className="p-3 font-mono text-[11px] text-muted-foreground/80 bg-black/5 dark:bg-white/5">
-                <div className="flex gap-2">
-                    <span className="text-primary/60">Input:</span>
-                    <span className="break-all">{JSON.stringify(params)}</span>
-                </div>
-            </div>
-        </div>
-    );
-};
-
 // --- Assistant Message Component ---
 const AssistantMessageItem = ({
     msg,
@@ -379,57 +333,18 @@ const AssistantMessageItem = ({
 
     const content = msg.content || "";
 
-    // Loading State: Pure minimalist bouncing dots
-    if (isLatest && isLoading && !content) {
-        return (
-            <div className="space-y-3 w-full min-w-0 animate-in fade-in duration-500">
-                <div className="flex items-center gap-2.5">
-                    <div className="w-6 h-6 rounded-md bg-primary/10 overflow-hidden ring-1 ring-primary/20 flex items-center justify-center">
-                        {msg.agent_avatar ? (
-                            <img
-                                src={msg.agent_avatar}
-                                alt={msg.agent_name}
-                                className="w-full h-full object-cover"
-                            />
-                        ) : (
-                            <span className="text-[10px] font-bold">
-                                {msg.agent_name?.charAt(0)}
-                            </span>
-                        )}
-                    </div>
-                    <span className="text-[11px] font-bold text-foreground/80 tracking-widest">
-                        {msg.agent_name}
-                    </span>
-                </div>
-                <div className="flex gap-1.5 items-center p-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-primary/40 animate-bounce [animation-duration:0.8s] [animation-delay:-0.3s]"></span>
-                    <span className="w-1.5 h-1.5 rounded-full bg-primary/40 animate-bounce [animation-duration:0.8s] [animation-delay:-0.15s]"></span>
-                    <span className="w-1.5 h-1.5 rounded-full bg-primary/40 animate-bounce [animation-duration:0.8s]"></span>
-                </div>
-            </div>
-        );
-    }
-
-    // Tags Parsing Logic - Support multiple blocks
+    // Tags Parsing Logic
     const parseAllTags = (startTag: string, endTag: string) => {
         const results = [];
         let cursor = 0;
-
         while (true) {
             const startIdx = content.indexOf(startTag, cursor);
             if (startIdx === -1) break;
-
             const endIdx = content.indexOf(endTag, startIdx + startTag.length);
             results.push({
-                content:
-                    endIdx !== -1
-                        ? content.substring(startIdx + startTag.length, endIdx)
-                        : content.substring(startIdx + startTag.length),
+                content: endIdx !== -1 ? content.substring(startIdx + startTag.length, endIdx) : content.substring(startIdx + startTag.length),
                 isClosed: endIdx !== -1,
-                startIdx,
-                endIdx,
             });
-
             if (endIdx === -1) break;
             cursor = endIdx + endTag.length;
         }
@@ -438,24 +353,17 @@ const AssistantMessageItem = ({
 
     const allThoughts = parseAllTags("<thought>", "</thought>");
     const allPlans = parseAllTags("<plan>", "</plan>");
-    const allActions = parseAllTags("<action>", "</action>");
-
-    // For UI display, we focus on the LATEST block during streaming,
-    // but can show historical ones if needed.
     const thought = allThoughts[allThoughts.length - 1] || null;
     const plan = allPlans[allPlans.length - 1] || null;
-    const action = allActions[allActions.length - 1] || null;
-
     const isStreaming = isLatest && isLoading;
 
     let mainContent = content;
-
     // Strip blocks that have dedicated UI renderers
     const blocksToHide = [
         { start: "<thought>", end: "</thought>" },
         { start: "<plan>", end: "</plan>" },
-        { start: "<thinking>", end: "</thinking>" },
         { start: "<action>", end: "</action>" },
+        { start: "<status>", end: "</status>" },
     ];
 
     blocksToHide.forEach((block) => {
@@ -464,9 +372,7 @@ const AssistantMessageItem = ({
             if (s === -1) break;
             const e = mainContent.indexOf(block.end, s);
             if (e !== -1) {
-                mainContent =
-                    mainContent.substring(0, s) +
-                    mainContent.substring(e + block.end.length);
+                mainContent = mainContent.substring(0, s) + mainContent.substring(e + block.end.length);
             } else {
                 mainContent = mainContent.substring(0, s);
                 break;
@@ -474,27 +380,7 @@ const AssistantMessageItem = ({
         }
     });
 
-    // Special treatment for <call> - convert to highlighted markdown instead of stripping
-    mainContent = mainContent.replace(/<call>\s*(@\w+)\s*(.*?)\s*<\/call>/gs, (match, agent, task) => {
-        return `\n\n> **${agent}** ${task}\n\n`;
-    });
-
-    // Also handle unclosed <call> during streaming
-    const unclosedCall = mainContent.match(/<call>\s*(@\w+)?\s*([^<]*)$/s);
-    if (isStreaming && unclosedCall) {
-        const agent = unclosedCall[1] || "";
-        const task = unclosedCall[2] || "";
-        mainContent = mainContent.substring(0, unclosedCall.index) + `\n\n> **${agent}** ${task}`;
-    }
-
-    // --- 预防流式闪烁：隐藏末尾的潜在标签前缀 ---
-    // 如果正文以 '<', '</', '<p', '<t' 等开头或结尾，可能是标签正在到达
-    const partialTagMatch = mainContent.match(/<[\/a-zA-Z0-9]*$/);
-    if (isStreaming && partialTagMatch) {
-        mainContent = mainContent.substring(0, partialTagMatch.index);
-    }
-
-    mainContent = mainContent.trim();
+    mainContent = mainContent.replace(/<call>\s*(@\w+)\s*(.*?)\s*<\/call>/gs, "\n\n> **$1** $2\n\n").trim();
 
     return (
         <div className="space-y-3 w-full min-w-0 overflow-hidden">
@@ -502,76 +388,31 @@ const AssistantMessageItem = ({
                 <div className="flex items-center gap-2.5">
                     <div className="w-6 h-6 rounded-md bg-primary/10 overflow-hidden ring-1 ring-primary/20 flex items-center justify-center">
                         {msg.agent_avatar ? (
-                            <img
-                                src={msg.agent_avatar}
-                                alt={msg.agent_name}
-                                className="w-full h-full object-cover"
-                            />
+                            <img src={msg.agent_avatar} alt={msg.agent_name} className="w-full h-full object-cover" />
                         ) : (
-                            <span className="text-[10px] font-bold">
-                                {msg.agent_name?.charAt(0)}
-                            </span>
+                            <span className="text-[10px] font-bold">{msg.agent_name?.charAt(0)}</span>
                         )}
                     </div>
-                    <span className="text-[11px] font-bold text-foreground/80 tracking-widest">
-                        {msg.agent_name}
-                    </span>
+                    <span className="text-[11px] font-bold text-foreground/80 tracking-widest">{msg.agent_name}</span>
                 </div>
-                <span className="text-[9px] font-medium text-muted-foreground/50 tabular-nums">
-                    {new Date(msg.timestamp).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                    })}
-                </span>
+                {msg.timestamp && (
+                    <span className="text-[9px] font-medium text-muted-foreground/50 tabular-nums">
+                        {new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                )}
             </div>
 
-            {/* --- Thinking Block --- */}
             {thought && (
-                <div
-                    className={`rounded-xl overflow-hidden transition-all w-full min-w-0 ${
-                        isThinkingExpanded
-                            ? "bg-muted/30 border border-border/40"
-                            : "bg-transparent border-transparent"
-                    }`}
-                >
-                    <button
-                        onClick={() =>
-                            setIsThinkingExpanded(!isThinkingExpanded)
-                        }
-                        onMouseEnter={() => setIsHovered(true)}
-                        onMouseLeave={() => setIsHovered(false)}
-                        className="flex items-center gap-2 px-1.5 py-1.5 hover:text-foreground/80 transition-colors text-[10px] font-bold text-muted-foreground/70 uppercase tracking-tight"
-                    >
+                <div className={`rounded-xl overflow-hidden transition-all w-full min-w-0 ${isThinkingExpanded ? "bg-muted/30 border border-border/40" : "bg-transparent"}`}>
+                    <button onClick={() => setIsThinkingExpanded(!isThinkingExpanded)} onMouseEnter={() => setIsHovered(true)} onMouseLeave={() => setIsHovered(false)} className="flex items-center gap-2 px-1.5 py-1.5 hover:text-foreground/80 transition-colors text-[10px] font-bold text-muted-foreground/70 uppercase tracking-tight">
                         <div className="w-4 h-4 flex items-center justify-center">
-                            {isHovered ? (
-                                isThinkingExpanded ? (
-                                    <ChevronDown size={14} />
-                                ) : (
-                                    <ChevronRight size={14} />
-                                )
-                            ) : (
-                                <Brain size={14} className="text-primary/60 animate-pulse" />
-                            )}
+                            {isHovered ? (isThinkingExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />) : <Brain size={14} className="text-primary/60 animate-pulse" />}
                         </div>
-                        <span className="flex-1 text-left flex items-center">
-                            {thought.isClosed ? "深度思考" : (
-                                <>
-                                    深度思考中
-                                    <span className="inline-flex ml-0.5">
-                                        <span className="animate-[pulse_1.5s_infinite] [animation-delay:0s]">.</span>
-                                        <span className="animate-[pulse_1.5s_infinite] [animation-delay:0.3s]">.</span>
-                                        <span className="animate-[pulse_1.5s_infinite] [animation-delay:0.6s]">.</span>
-                                    </span>
-                                </>
-                            )}
-                        </span>
+                        <span>{thought.isClosed ? "深度思考" : "深度思考中..."}</span>
                     </button>
                     {isThinkingExpanded && (
                         <div className="px-4 pb-3 text-xs leading-relaxed text-muted-foreground/60 italic font-medium border-t border-border/20 pt-2 break-all">
-                            <ReactMarkdown
-                                remarkPlugins={[remarkGfm]}
-                                components={MarkdownComponents}
-                            >
+                            <ReactMarkdown remarkPlugins={[remarkGfm]} components={MarkdownComponents}>
                                 {thought.content || "正在审视上下文..."}
                             </ReactMarkdown>
                         </div>
@@ -579,28 +420,19 @@ const AssistantMessageItem = ({
                 </div>
             )}
 
-            {/* --- Action Plan Block --- */}
             {plan && <PlanTodoView content={plan.content} />}
 
-            {/* --- Skill Action Block (Nexus V4) --- */}
-            {action && <SkillActionView content={action.content} isClosed={action.isClosed} />}
-
-            {/* --- Main Response --- */}
             {mainContent && (
                 <div className="text-sm leading-relaxed text-foreground/90 font-medium relative [&_p]:mb-6 last:[&_p]:mb-0 break-all w-full min-w-0">
-                    <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        components={MarkdownComponents}
-                    >
-                        {mainContent}
-                    </ReactMarkdown>
-                    {isStreaming && (thought?.isClosed || !thought) && (plan?.isClosed || !plan) && (
-                        <span className="inline-flex gap-1 ml-1 items-center align-middle">
-                            <span className="w-1 h-1 rounded-full bg-primary animate-bounce [animation-duration:0.8s] [animation-delay:-0.3s]"></span>
-                            <span className="w-1 h-1 rounded-full bg-primary animate-bounce [animation-duration:0.8s] [animation-delay:-0.15s]"></span>
-                            <span className="w-1 h-1 rounded-full bg-primary animate-bounce [animation-duration:0.8s]"></span>
-                        </span>
-                    )}
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={MarkdownComponents}>{mainContent}</ReactMarkdown>
+                    {isStreaming && !mainContent.endsWith(".") && <span className="inline-flex gap-1 ml-1 animate-pulse text-primary font-black">_</span>}
+                </div>
+            )}
+
+            {isLatest && isLoading && msg.status && (
+                <div className="flex items-center gap-2 px-2 py-1.5 bg-primary/5 border border-primary/10 rounded-lg w-fit animate-in fade-in zoom-in-95 mt-2">
+                    <Zap size={10} className="text-primary animate-pulse" />
+                    <span className="text-[10px] font-bold text-primary/70 uppercase tracking-wider">{msg.status}</span>
                 </div>
             )}
         </div>
@@ -616,6 +448,7 @@ interface Message {
     agent_avatar?: string;
     steps?: number;
     timestamp: number;
+    status?: string;
 }
 
 interface Agent {
@@ -636,9 +469,7 @@ interface Report {
 
 export default function ExecutionConsole() {
     const [agents, setAgents] = useState<Agent[]>([]);
-    const [currentSessionId, setCurrentSessionId] = useState<string | null>(
-        null
-    );
+    const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
     const [messages, setMessages] = useState<Message[]>([]);
     const [inputValue, setInputValue] = useState("");
     const [isLoading, setIsLoading] = useState(false);
@@ -660,19 +491,13 @@ export default function ExecutionConsole() {
     const viewportRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const isProgrammaticScroll = useRef(false);
+    const agentsRef = useRef<Agent[]>([]);
 
-    // --- Scroll Logic ---
     const scrollToBottom = (behavior: ScrollBehavior = "smooth") => {
         if (viewportRef.current) {
             isProgrammaticScroll.current = true;
             setShowScrollButton(false);
-            
-            viewportRef.current.scrollTo({
-                top: viewportRef.current.scrollHeight,
-                behavior
-            });
-            
-            // 延迟重置，确保平滑滚动完成后再允许按钮逻辑
+            viewportRef.current.scrollTo({ top: viewportRef.current.scrollHeight, behavior });
             setTimeout(() => {
                 isProgrammaticScroll.current = false;
                 setIsAtBottom(true);
@@ -683,31 +508,18 @@ export default function ExecutionConsole() {
 
     const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
         if (isProgrammaticScroll.current) return;
-
         const target = e.currentTarget;
         const distanceToBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
-        
-        // 判定是否在底部 (用于自动滚动)
         const atBottom = distanceToBottom < 20;
         setIsAtBottom(atBottom);
-        
-        // 滚动阈值：向上滚动超过 100px 则显示浮动按钮
         setShowScrollButton(distanceToBottom > 100);
-        
-        if (atBottom) {
-            setHasNewMessages(false);
-        }
+        if (atBottom) setHasNewMessages(false);
     };
 
     useEffect(() => {
         if (!messages.length) return;
-
-        if (!isHovering && isAtBottom) {
-            scrollToBottom("auto");
-        } else if (!isAtBottom) {
-            // 如果不在底部且有新消息
-            setHasNewMessages(true);
-        }
+        if (!isHovering && isAtBottom) scrollToBottom("auto");
+        else if (!isAtBottom) setHasNewMessages(true);
     }, [messages, isLoading]);
 
     const handleMouseDown = (e: React.MouseEvent) => {
@@ -715,14 +527,10 @@ export default function ExecutionConsole() {
         const startX = e.clientX;
         const startWidth = flowWidth;
         document.body.style.userSelect = "none";
-
         const handleMouseMove = (e: MouseEvent) => {
             const newWidth = startWidth + (e.clientX - startX);
-            if (newWidth > 320 && newWidth < 800) {
-                setFlowWidth(newWidth);
-            }
+            if (newWidth > 320 && newWidth < 800) setFlowWidth(newWidth);
         };
-
         const handleMouseUp = () => {
             setIsResizing(false);
             document.removeEventListener("mousemove", handleMouseMove);
@@ -730,40 +538,10 @@ export default function ExecutionConsole() {
             document.body.style.cursor = "default";
             document.body.style.userSelect = "auto";
         };
-
         document.addEventListener("mousemove", handleMouseMove);
         document.addEventListener("mouseup", handleMouseUp);
         document.body.style.cursor = "col-resize";
     };
-
-    const filteredAgents = agents.filter((a) =>
-        a.name.toLowerCase().includes(mentionQuery.toLowerCase())
-    );
-
-    useEffect(() => {
-        setSelectedIndex(0);
-    }, [mentionQuery]);
-
-    const selectAgent = (agent: Agent) => {
-        const textarea = textareaRef.current;
-        const cursorPosition = textarea?.selectionStart || inputValue.length;
-        const textBeforeCursor = inputValue.substring(0, cursorPosition);
-        const lastAtSymbol = textBeforeCursor.lastIndexOf("@");
-        const prefix = inputValue.substring(0, lastAtSymbol);
-        const suffix = inputValue.substring(cursorPosition);
-
-        setInputValue(`${prefix}@${agent.name} ${suffix}`);
-        setShowAgentMenu(false);
-        setMentionQuery("");
-        setSelectedIndex(0);
-
-        // Refocus textarea
-        setTimeout(() => {
-            textarea?.focus();
-        }, 0);
-    };
-
-    const agentsRef = useRef<Agent[]>([]);
 
     useEffect(() => {
         const fetchAgents = async () => {
@@ -774,955 +552,161 @@ export default function ExecutionConsole() {
                 if (data) {
                     setAgents(data);
                     agentsRef.current = data;
-                    
-                    // 自动聚焦输入框 (在 Agent 数据加载后)
-                    setTimeout(() => {
-                        textareaRef.current?.focus();
-                    }, 100);
+                    setTimeout(() => textareaRef.current?.focus(), 100);
                 }
-            } catch (err) {
-                console.error("Fetch agents error:", err);
-            }
+            } catch (err) { console.error("Fetch agents error:", err); }
         };
         fetchAgents();
     }, []);
 
-    useEffect(() => {
-        let ws: WebSocket | null = null;
-        let reconnectTimeout: NodeJS.Timeout;
-
-        const connect = () => {
-            ws = new WebSocket("ws://localhost:8000/ws/ops");
-
-            ws.onmessage = (event) => {
-                try {
-                    const payload = JSON.parse(event.data);
-                    if (payload.type === "agent_message") {
-                        const msgData = payload.data;
-                        const { sender, subject, content } = msgData;
-
-                        if (subject === "task_stream_chunk") {
-                            const agent = agentsRef.current.find(
-                                (a) => a.identifier === sender
-                            );
-                            const messageId = `stream_${sender}`;
-
-                            setMessages((prev) => {
-                                const existing = prev.find(
-                                    (m) => m.id === messageId
-                                );
-                                if (existing) {
-                                    return prev.map((m) =>
-                                        m.id === messageId
-                                            ? {
-                                                  ...m,
-                                                  content:
-                                                      content.full_content_so_far,
-                                              }
-                                            : m
-                                    );
-                                } else {
-                                    return [
-                                        ...prev,
-                                        {
-                                            id: messageId,
-                                            role: "assistant",
-                                            content: content.chunk,
-                                            agent_id: sender,
-                                            agent_name: agent?.name || sender,
-                                            agent_avatar: agent?.avatar || "",
-                                            timestamp: Date.now(),
-                                        },
-                                    ];
-                                }
-                            });
-                        }
-
-                        if (subject === "task_result") {
-                            const messageId = `stream_${sender}`;
-                            setMessages((prev) =>
-                                prev.map((m) =>
-                                    m.id === messageId
-                                        ? { ...m, content: content.result }
-                                        : m
-                                )
-                            );
-                        }
-                    }
-                } catch (e) {
-                    console.error("WS error:", e);
-                }
-            };
-
-            ws.onclose = () => {
-                console.log("WS closed, reconnecting...");
-                reconnectTimeout = setTimeout(connect, 3000);
-            };
-        };
-
-        connect();
-
-        return () => {
-            if (ws) ws.close();
-            clearTimeout(reconnectTimeout);
-        };
-    }, []);
-
-    useEffect(() => {
-        if (scrollRef.current) {
-            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-        }
-    }, [messages, isLoading]);
-
     const handleSend = async () => {
         if (!inputValue.trim() || isLoading) return;
-
         let sessionId = currentSessionId;
-
-        // 如果是新会话的第一条消息，先创建会话
         if (!sessionId) {
-            const { data, error } = await supabase
-                .from("chat_sessions")
-                .insert([{ title: "新会话" }])
-                .select()
-                .single();
-
-            if (data) {
-                sessionId = data.id;
-                setCurrentSessionId(sessionId);
-            }
+            const { data } = await supabase.from("chat_sessions").insert([{ title: "新会话" }]).select().single();
+            if (data) { sessionId = data.id; setCurrentSessionId(sessionId); }
         }
+        const mentionedAgent = agents.find((a) => inputValue.includes(`@${a.name}`));
+        const targetAgent = mentionedAgent || agents.find((a) => a.identifier === "primary_agent");
+        if (!targetAgent) return;
 
-        const mentionedAgent = agents.find((a) =>
-            inputValue.includes(`@${a.name}`)
-        );
-
-        // 严格模式：仅使用已加载的真实 Agent 数据
-        // 如果找不到提及的 Agent，则回退到 CEO Agent
-        const defaultAgent = agents.find((a) => a.identifier === "primary_agent");
-        const targetAgent = mentionedAgent || defaultAgent;
-        
-        // 如果连默认 CEO 都没有（说明数据未加载或配置错误），则禁止发送
-        if (!targetAgent) {
-            console.error("错误: 无法定位目标智能体，且未找到默认 CEO 智能体。");
-            return;
-        }
-
-        const targetName = targetAgent.name;
-        const targetId = targetAgent.identifier;
-        const targetAvatar = targetAgent.avatar;
-
-        const userMsg: Message = {
-            id: Date.now().toString(),
-            role: "user",
-            content: inputValue,
-            timestamp: Date.now(),
-        };
-
+        const userMsg: Message = { id: Date.now().toString(), role: "user", content: inputValue, timestamp: Date.now() };
         const isFirstMessage = messages.length === 0;
         setMessages((prev) => [...prev, userMsg]);
-        const currentInput = inputValue; // 保存当前输入用于总结
         setInputValue("");
         setIsLoading(true);
         setShowAgentMenu(false);
 
         const assistantId = (Date.now() + 1).toString();
-
         try {
-            // 并行发起总结请求 (仅针对第一条消息)
             if (isFirstMessage) {
-                fetch("http://localhost:8000/api/chat/summarize", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ content: currentInput }),
-                })
-                    .then((res) => res.json())
-                    .then(async (data) => {
-                        if (data.title) {
-                            setSessionTitle(data.title);
-                            // 更新数据库中的标题
-                            if (sessionId) {
-                                await supabase
-                                    .from("chat_sessions")
-                                    .update({ title: data.title })
-                                    .eq("id", sessionId);
-                            }
-                        }
-                    })
-                    .catch((err) => console.error("Summarize error:", err));
+                fetch("http://localhost:8000/api/chat/summarize", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: userMsg.content }) })
+                    .then(res => res.json()).then(async data => { if (data.title && sessionId) { setSessionTitle(data.title); await supabase.from("chat_sessions").update({ title: data.title }).eq("id", sessionId); } });
             }
 
-            const assistantMsg: Message = {
-                id: assistantId,
-                role: "assistant",
-                content: "",
-                agent_name: targetName,
-                agent_avatar: targetAvatar,
-                steps: 0,
-                timestamp: Date.now(),
-            };
-
+            const assistantMsg: Message = { id: assistantId, role: "assistant", content: "", agent_name: targetAgent.name, agent_avatar: targetAgent.avatar, timestamp: Date.now() };
             setMessages((prev) => [...prev, assistantMsg]);
 
-            const response = await fetch(
-                "http://localhost:8000/api/chat/stream",
-                {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        agent_id: targetId,
-                        content: userMsg.content,
-                    }),
-                }
-            );
-
+            const response = await fetch("http://localhost:8000/api/chat/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agent_id: targetAgent.identifier, content: userMsg.content }) });
             if (!response.ok) throw new Error("网络请求失败");
-
             const reader = response.body?.getReader();
             if (!reader) throw new Error("流读取器不可用");
 
             const decoder = new TextDecoder();
             let buffer = "";
             let currentAssistantId = assistantId;
-            let lastAgentId = targetId;
+            let lastAgentId = targetAgent.identifier;
 
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
-
                 buffer += decoder.decode(value, { stream: true });
-                
-                // 处理 JSONL (每行一个 JSON)
                 const lines = buffer.split("\n");
-                buffer = lines.pop() || ""; // 最后一行可能不完整，留到下一轮
+                buffer = lines.pop() || "";
 
                 for (const line of lines) {
                     if (!line.trim()) continue;
                     try {
                         const event = JSON.parse(line);
-                        
                         if (event.type === "stream") {
-                            const newAgentId = event.agent_id;
-                            const chunk = event.content;
-
-                            // 如果 Agent 切换了，创建一个新的消息条目
-                            if (newAgentId && newAgentId !== lastAgentId) {
-                                lastAgentId = newAgentId;
+                            if (event.agent_id && event.agent_id !== lastAgentId) {
+                                lastAgentId = event.agent_id;
                                 currentAssistantId = (Date.now() + Math.random()).toString();
-                                
-                                const newAgent = agentsRef.current.find(a => a.identifier === newAgentId);
-                                
-                                const newMsg: Message = {
-                                    id: currentAssistantId,
-                                    role: "assistant",
-                                    content: chunk,
-                                    agent_id: newAgentId,
-                                    agent_name: newAgent?.name || newAgentId,
-                                    agent_avatar: newAgent?.avatar || "",
-                                    timestamp: Date.now(),
-                                };
-                                
-                                setMessages(prev => [...prev, newMsg]);
+                                const newAgent = agentsRef.current.find(a => a.identifier === event.agent_id);
+                                setMessages(prev => [...prev, { id: currentAssistantId, role: "assistant", content: event.content, agent_id: event.agent_id, agent_name: newAgent?.name || event.agent_id, agent_avatar: newAgent?.avatar || "", timestamp: Date.now() }]);
                             } else {
-                                // 否则，更新当前消息
-                                setMessages((prev) =>
-                                    prev.map((msg) =>
-                                        msg.id === currentAssistantId
-                                            ? { ...msg, content: (msg.content || "") + chunk }
-                                            : msg
-                                    )
-                                );
+                                setMessages(prev => prev.map(msg => msg.id === currentAssistantId ? { ...msg, content: (msg.content || "") + event.content } : msg));
                             }
+                        } else if (event.type === "status") {
+                            setMessages(prev => prev.map(msg => msg.id === currentAssistantId ? { ...msg, status: event.content } : msg));
                         } else if (event.type === "error") {
-                            setMessages((prev) => [
-                                ...prev,
-                                {
-                                    id: Date.now().toString(),
-                                    role: "assistant",
-                                    content: `\n\n[ERROR]: ${event.content}\n`,
-                                    agent_name: "System",
-                                    timestamp: Date.now()
-                                }
-                            ]);
+                            setMessages(prev => [...prev, { id: Date.now().toString(), role: "assistant", content: `\n\n[ERROR]: ${event.content}\n`, agent_name: "System", timestamp: Date.now() }]);
                         }
-                    } catch (e) {
-                        console.error("解析 JSON 流失败:", e, line);
-                    }
+                    } catch (e) {}
                 }
             }
-
-            setActiveReport({
-                title: "全域策略执行报告",
-                product: "智能决策输出",
-                status: "Completed",
-                timestamp: new Date().toLocaleTimeString(),
-                details: "基于智能体矩阵的实时分析已完成。",
-            });
+            setActiveReport({ title: "全域策略执行报告", product: "智能决策输出", status: "Completed", timestamp: new Date().toLocaleTimeString(), details: "分析已完成。" });
         } catch (error) {
-            console.error("Streaming error:", error);
-            setMessages((prev) =>
-                prev.map((msg) =>
-                    msg.id === assistantId
-                        ? {
-                              ...msg,
-                              content:
-                                  "抱歉，系统出现异常，我暂时无法完成此项任务，请稍后再试。",
-                          }
-                        : msg
-                )
-            );
+            setMessages(prev => prev.map(msg => msg.id === assistantId ? { ...msg, content: "系统异常，请稍后再试。" } : msg));
         } finally {
             setIsLoading(false);
-            // 重新聚焦输入框
-            setTimeout(() => {
-                textareaRef.current?.focus();
-            }, 0);
+            setTimeout(() => textareaRef.current?.focus(), 0);
         }
     };
 
-    const startNewSession = () => {
-        setMessages([]);
-        setActiveReport(null);
-        setSessionTitle("新会话");
-        setCurrentSessionId(null);
-    };
-
     return (
-        <div className="flex h-screen bg-background text-foreground overflow-hidden font-sans selection:bg-primary/30 relative">
-            <div
-                className="absolute inset-0 opacity-[0.03] dark:opacity-[0.05] pointer-events-none"
-                style={{
-                    backgroundImage:
-                        "radial-gradient(circle, currentColor 1px, transparent 1px)",
-                    backgroundSize: "32px 32px",
-                }}
-            ></div>
-
-            {/* === 1. History Panel (Sidebar) === */}
-            <aside
-                className={`flex flex-col z-50 shrink-0 transition-all duration-300 ease-in-out overflow-hidden bg-sidebar relative ${
-                    isSidebarOpen
-                        ? "w-[240px] border-r border-sidebar-border/40"
-                        : "w-0 border-none"
-                }`}
-            >
+        <div className="flex h-screen bg-background text-foreground overflow-hidden font-sans relative">
+            <aside className={`flex flex-col z-50 shrink-0 transition-all duration-300 ease-in-out bg-sidebar relative ${isSidebarOpen ? "w-[240px] border-r border-sidebar-border/40" : "w-0 border-none"}`}>
                 <div className="w-[240px] flex flex-col h-full">
-                    {/* Header: Align with h-12 */}
                     <header className="h-12 flex items-center justify-between px-4 shrink-0">
-                        <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center text-primary-foreground font-black text-xl shadow-none">
-                                A
-                            </div>
-                            <span className="font-black tracking-tighter text-foreground text-sm uppercase">
-                                Autonomy
-                            </span>
-                        </div>
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => setIsSidebarOpen(false)}
-                            className="h-8 w-8 text-sidebar-foreground/40 hover:text-background"
-                        >
-                            <PanelLeft size={16} />
-                        </Button>
+                        <div className="flex items-center gap-2"><div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center text-primary-foreground font-black text-xl">A</div><span className="font-black text-sm uppercase">Autonomy</span></div>
+                        <Button variant="ghost" size="icon" onClick={() => setIsSidebarOpen(false)} className="h-8 w-8"><PanelLeft size={16} /></Button>
                     </header>
-
-                    <div className="p-4 pt-6 flex-1 flex flex-col overflow-hidden">
-                        <div className="mb-4">
-                            <Button
-                                onClick={startNewSession}
-                                className="w-full justify-start gap-3 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 shadow-none rounded-xl h-11 text-xs font-bold transition-all px-4"
-                            >
-                                <Plus size={18} />
-                                开启新会话
-                            </Button>
-                        </div>
-
-                        <ScrollArea className="flex-1 w-full">
-                            <div className="space-y-1.5 w-full">
-                                <div className="px-4 py-2 text-[10px] font-black text-sidebar-foreground/30 uppercase tracking-[0.2em] mb-1">
-                                    最近会话
-                                </div>
-                                <button className="w-full max-w-full overflow-hidden text-left p-3.5 px-4 rounded-xl bg-primary/10 border border-primary/20 text-xs font-semibold text-primary flex items-center gap-3 group transition-all ring-1 ring-primary/5">
-                                    <MessageSquare
-                                        size={14}
-                                        className="text-primary/70 shrink-0"
-                                    />
-                                    <div className="truncate flex-1 max-w-full w-0">
-                                        {sessionTitle}
-                                    </div>
-                                    <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse shrink-0" />
-                                </button>
-                                <button className="w-full max-w-full overflow-hidden text-left p-3.5 px-4 rounded-xl hover:bg-sidebar-accent hover:text-foreground text-xs font-semibold text-sidebar-foreground/50 flex items-center gap-3 group transition-all border border-transparent">
-                                    <Clock
-                                        size={14}
-                                        className="text-sidebar-foreground/30 shrink-0"
-                                    />
-                                    <div className="truncate flex-1 max-w-full w-0">
-                                        历史分析报告 12/28
-                                    </div>
-                                </button>
-                            </div>
-                        </ScrollArea>
-                    </div>
-
-                    <div className="p-4 flex flex-col gap-1 border-t border-sidebar-border/50 bg-sidebar">
-                        <Button
-                            variant="ghost"
-                            className="w-full justify-start gap-3 text-sidebar-foreground/40 hover:text-foreground hover:bg-sidebar-accent rounded-xl text-sm font-semibold px-4 py-3 h-auto transition-all group"
-                        >
-                            <LayoutGrid
-                                size={16}
-                                className="text-sidebar-foreground/30 transition-colors"
-                            />
-                            插件中心
-                        </Button>
-                        <Button
-                            variant="ghost"
-                            className="w-full justify-start gap-3 text-sidebar-foreground/40 hover:text-foreground hover:bg-sidebar-accent rounded-xl text-sm font-semibold px-4 py-3 h-auto transition-all group"
-                        >
-                            <Settings
-                                size={16}
-                                className="text-sidebar-foreground/30 group-hover:rotate-90 transition-transform duration-500"
-                            />
-                            系统设置
-                        </Button>
+                    <div className="p-4 flex-1 flex flex-col overflow-hidden">
+                        <Button onClick={() => { setMessages([]); setCurrentSessionId(null); setSessionTitle("新会话"); }} className="w-full justify-start gap-3 bg-primary/10 text-primary rounded-xl h-11 text-xs font-bold transition-all"><Plus size={18} />开启新会话</Button>
+                        <ScrollArea className="flex-1 mt-4"><div className="space-y-1.5"><div className="px-4 py-2 text-[10px] font-black opacity-30 uppercase tracking-widest">最近会话</div><button className="w-full text-left p-3.5 rounded-xl bg-primary/10 text-primary flex items-center gap-3"><MessageSquare size={14} /><div className="truncate flex-1 text-xs font-semibold">{sessionTitle}</div></button></div></ScrollArea>
                     </div>
                 </div>
             </aside>
 
-            {/* === 2. Current Session Panel === */}
-            <section
-                style={{ width: isFlowOpen ? `${flowWidth}px` : "0px" }}
-                className={`flex flex-col z-40 shrink-0 bg-background relative h-full overflow-hidden ${
-                    isFlowOpen ? "border-r border-border/40" : "border-none"
-                } ${
-                    !isResizing
-                        ? "transition-[width,border] duration-300 ease-in-out"
-                        : ""
-                }`}
-            >
-                {isFlowOpen && (
-                    <div
-                        className="absolute -right-1 top-0 w-2 h-full cursor-col-resize z-50 hover:bg-primary/30 transition-colors"
-                        onMouseDown={handleMouseDown}
-                    />
-                )}
-                <div
-                    className={`flex flex-col flex-1 min-h-0 ${
-                        !isResizing ? "overflow-hidden" : ""
-                    }`}
-                >
-                    <header className="h-12 border-b border-border/40 flex items-center justify-between px-4 shrink-0 bg-background/50 backdrop-blur-md">
-                        <div className="flex items-center gap-2">
-                            {!isSidebarOpen && (
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => setIsSidebarOpen(true)}
-                                    className="h-8 w-8 text-muted-foreground hover:text-background"
-                                >
-                                    <PanelLeft
-                                        size={16}
-                                        className="rotate-180"
-                                    />
-                                </Button>
-                            )}
-                            <input
-                                value={sessionTitle}
-                                onChange={(e) =>
-                                    setSessionTitle(e.target.value)
-                                }
-                                className="bg-transparent border-none focus:ring-0 p-0 text-[13px] font-bold text-foreground/70 ml-1 focus:outline-none flex-1 min-w-0"
-                                placeholder="输入会话标题..."
-                            />
+            <section style={{ width: isFlowOpen ? `${flowWidth}px` : "0px" }} className={`flex flex-col z-40 shrink-0 bg-background relative h-full overflow-hidden ${isFlowOpen ? "border-r border-border/40" : ""}`}>
+                {isFlowOpen && <div className="absolute -right-1 top-0 w-2 h-full cursor-col-resize z-50 hover:bg-primary/30" onMouseDown={handleMouseDown} />}
+                <header className="h-12 border-b border-border/40 flex items-center justify-between px-4 shrink-0 bg-background/50 backdrop-blur-md">
+                    <div className="flex items-center gap-2">{!isSidebarOpen && <Button variant="ghost" size="icon" onClick={() => setIsSidebarOpen(true)} className="h-8 w-8"><PanelLeft size={16} className="rotate-180" /></Button>}<input value={sessionTitle} onChange={(e) => setSessionTitle(e.target.value)} className="bg-transparent border-none text-[13px] font-bold outline-none flex-1" placeholder="输入标题..." /></div>
+                    <Button variant="ghost" size="icon" onClick={() => setIsFlowOpen(false)} className="h-8 w-8"><PanelLeft size={16} /></Button>
+                </header>
+
+                <div className="flex-1 min-h-0 relative flex flex-col bg-muted/5" onMouseEnter={() => setIsHovering(true)} onMouseLeave={() => setIsHovering(false)}>
+                    <ScrollArea className="flex-1 h-0" viewportRef={viewportRef} onScroll={handleScroll}>
+                        <div className="p-6 space-y-8 pb-12">
+                            {messages.length === 0 && <div className="space-y-4"><div className="flex items-center gap-3 text-primary"><Sparkles size={20} /><h3 className="text-sm font-bold uppercase">就绪</h3></div><p className="text-xs font-medium text-muted-foreground">请输入指令启动策略分析。</p></div>}
+                            {messages.map((msg, index) => (
+                                <div key={msg.id}>{msg.role === "assistant" ? <AssistantMessageItem msg={msg} isLatest={index === messages.length - 1} isLoading={isLoading} /> : <div className="flex flex-col items-end space-y-1.5"><span className="text-[10px] font-black text-primary/40 uppercase">You</span><div className="bg-primary/5 border border-primary/20 p-4 rounded-2xl rounded-tr-none text-sm font-semibold max-w-[90%] text-primary">{msg.content}</div></div>}</div>
+                            ))}
                         </div>
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => setIsFlowOpen(false)}
-                            className="h-8 w-8 text-muted-foreground hover:text-background"
-                        >
-                            <PanelLeft size={16} />
-                        </Button>
-                    </header>
+                    </ScrollArea>
+                    {showScrollButton && (
+                        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50">
+                            <Button size="sm" onClick={() => scrollToBottom("smooth")} className="rounded-full shadow-lg bg-primary text-primary-foreground text-[10px] font-bold gap-2 h-9 px-4">
+                                {hasNewMessages ? <Sparkles size={14} className="fill-current" /> : <ChevronDown size={14} />}
+                                <span>{hasNewMessages ? "查看新消息" : "回到最底部"}</span>
+                            </Button>
+                        </div>
+                    )}
+                </div>
 
-                    <div 
-                        className="flex-1 min-h-0 relative flex flex-col bg-muted/5"
-                        onMouseEnter={() => setIsHovering(true)}
-                        onMouseLeave={() => setIsHovering(false)}
-                    >
-                        <ScrollArea 
-                            className="flex-1 h-0" 
-                            viewportRef={viewportRef}
-                            onScroll={handleScroll}
-                        >
-                            <div className="p-6 space-y-8 pb-12 max-w-full">
-                                {messages.length === 0 && (
-                                    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-1000">
-                                        <div className="space-y-4 text-primary">
-                                            <div className="flex items-center gap-3">
-                                                <Sparkles
-                                                    size={20}
-                                                    className="fill-primary/20"
-                                                />
-                                                <h3 className="text-sm font-bold tracking-tight text-primary/80 uppercase">
-                                                    新会话已就绪
-                                                </h3>
-                                            </div>
-                                            <p className="text-xs font-medium text-muted-foreground leading-relaxed">
-                                                智能体矩阵已准备就绪。请输入您的指令以启动全域策略分析或任务调度。
-                                            </p>
-                                        </div>
-
-                                        <div className="flex flex-col gap-2">
-                                            <div className="flex items-center gap-2 px-1 mb-1 opacity-50">
-                                                <Command size={10} />
-                                                <p className="text-[9px] font-black uppercase tracking-[0.2em]">
-                                                    快捷指令
-                                                </p>
-                                            </div>
-                                            {[
-                                                "分析 24 小时内全平台选品趋势",
-                                                "评估供应链稳定性",
-                                                "生成 Q1 运营提案",
-                                            ].map((tip) => (
-                                                <button
-                                                    key={tip}
-                                                    onClick={() =>
-                                                        setInputValue(tip)
-                                                    }
-                                                    className="text-left p-3.5 rounded-xl border border-border bg-background/50 hover:border-primary/40 hover:bg-primary/5 transition-all text-xs font-semibold text-muted-foreground hover:text-foreground group flex items-center justify-between shadow-none"
-                                                >
-                                                    {tip}
-                                                    <Plus
-                                                        size={12}
-                                                        className="opacity-0 group-hover:opacity-100 transition-opacity text-primary"
-                                                    />
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {messages.map((msg, index) => (
-                                    <div
-                                        key={msg.id}
-                                        className="space-y-4 animate-in fade-in duration-500"
-                                    >
-                                        {msg.role === "assistant" ? (
-                                            <AssistantMessageItem
-                                                msg={msg}
-                                                isLatest={
-                                                    index === messages.length - 1
-                                                }
-                                                isLoading={isLoading}
-                                            />
-                                        ) : (
-                                            <div className="flex flex-col items-end space-y-1.5 w-full min-w-0">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-[9px] font-medium text-muted-foreground/40 tabular-nums">
-                                                        {new Date(
-                                                            msg.timestamp
-                                                        ).toLocaleTimeString([], {
-                                                            hour: "2-digit",
-                                                            minute: "2-digit",
-                                                        })}
-                                                    </span>
-                                                    <span className="text-[10px] font-black text-primary/40 tracking-widest">
-                                                        You
-                                                    </span>
-                                                </div>
-                                                <div className="bg-primary/5 border border-primary/20 p-4 rounded-2xl rounded-tr-none text-sm font-semibold max-w-[90%] text-primary leading-relaxed shadow-none break-all">
-                                                    <ReactMarkdown
-                                                        remarkPlugins={[remarkGfm]}
-                                                        components={
-                                                            MarkdownComponents
-                                                        }
-                                                    >
-                                                        {msg.content}
-                                                    </ReactMarkdown>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                ))}
-                            </div>
-                        </ScrollArea>
-
-                        {/* --- Floating Scroll Control (Centered Pill) --- */}
-                        {showScrollButton && (
-                            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                                <Button
-                                    size="sm"
-                                    onClick={() => scrollToBottom("smooth")}
-                                    className="rounded-full shadow-lg bg-primary text-primary-foreground hover:bg-primary/90 text-[10px] font-bold tracking-tight gap-2 h-9 px-4 transition-all active:scale-95 border-none"
-                                >
-                                    {hasNewMessages ? (
-                                        <Sparkles size={14} className="fill-current" />
-                                    ) : (
-                                        <ChevronDown size={14} />
-                                    )}
-                                    <span>
-                                        {hasNewMessages ? "查看新消息" : "回到最底部"}
-                                    </span>
-                                </Button>
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="p-6 bg-background relative">
-                        {showAgentMenu && (
-                            <Card className="absolute bottom-full left-6 w-56 gap-0 bg-popover/95 backdrop-blur-2xl border-border shadow-2xl p-1 z-50 rounded-xl  animate-in slide-in-from-bottom-2">
-                                <div className="px-2 py-1.5 text-[10px] font-black text-muted-foreground uppercase tracking-widest border-b border-border/50 mb-1">
-                                    智能体
-                                </div>
-                                <div className="max-h-80 overflow-y-auto scrollbar-hide">
-                                    {filteredAgents.map((agent, index) => (
-                                        <button
-                                            key={agent.id}
-                                            onClick={() => selectAgent(agent)}
-                                            className={`w-full flex items-center gap-2.5 p-1.5 rounded-lg transition-all text-left group ${
-                                                index === selectedIndex
-                                                    ? "bg-primary/20 ring-1 ring-primary/30"
-                                                    : "hover:bg-primary/10"
-                                            }`}
-                                        >
-                                            <div className="w-6 h-6 rounded-md bg-muted overflow-hidden ring-1 ring-border/50 group-hover:ring-primary/30 shrink-0">
-                                                <img
-                                                    src={agent.avatar}
-                                                    alt={agent.name}
-                                                    className="w-full h-full object-cover"
-                                                />
-                                            </div>
-                                            <div className="flex flex-col min-w-0">
-                                                <div
-                                                    className={`text-[11px] font-bold transition-colors truncate ${
-                                                        index === selectedIndex
-                                                            ? "text-primary"
-                                                            : "group-hover:text-primary"
-                                                    }`}
-                                                >
-                                                    {agent.name}
-                                                </div>
-                                                <div className="text-[9px] text-muted-foreground/60 font-medium truncate">
-                                                    {agent.role}
-                                                </div>
-                                            </div>
-                                        </button>
-                                    ))}
-                                </div>
-                            </Card>
-                        )}
-                        <Card className="bg-background/50 border-border/40 shadow-none rounded-xl p-1.5 flex flex-col gap-1 transition-all overflow-hidden group-focus-within:ring-1 group-focus-within:ring-primary/30">
-                            <textarea
-                                ref={textareaRef}
-                                value={inputValue}
-                                disabled={!agents.some(a => a.identifier === "primary_agent")}
-                                onChange={(e) => {
-                                    const val = e.target.value;
-                                    setInputValue(val);
-
-                                    const cursorPosition =
-                                        e.target.selectionStart;
-                                    const textBeforeCursor = val.substring(
-                                        0,
-                                        cursorPosition
-                                    );
-                                    const lastAtSymbol =
-                                        textBeforeCursor.lastIndexOf("@");
-
-                                    if (lastAtSymbol !== -1) {
-                                        const charBeforeAt =
-                                            lastAtSymbol > 0
-                                                ? textBeforeCursor[
-                                                      lastAtSymbol - 1
-                                                  ]
-                                                : "";
-                                        const query =
-                                            textBeforeCursor.substring(
-                                                lastAtSymbol + 1
-                                            );
-
-                                        // Only trigger if @ is at start or preceded by space/newline, and no space in query
-                                        if (
-                                            (lastAtSymbol === 0 ||
-                                                charBeforeAt === " " ||
-                                                charBeforeAt === "\n") &&
-                                            !query.includes(" ")
-                                        ) {
-                                            setShowAgentMenu(true);
-                                            setMentionQuery(query);
-                                        } else {
-                                            setShowAgentMenu(false);
-                                            setMentionQuery("");
-                                        }
-                                    } else {
-                                        setShowAgentMenu(false);
-                                        setMentionQuery("");
-                                    }
-                                }}
-                                onKeyDown={(e) => {
-                                    if (
-                                        showAgentMenu &&
-                                        filteredAgents.length > 0
-                                    ) {
-                                        if (e.key === "ArrowDown") {
-                                            e.preventDefault();
-                                            setSelectedIndex(
-                                                (prev) =>
-                                                    (prev + 1) %
-                                                    filteredAgents.length
-                                            );
-                                            return;
-                                        }
-                                        if (e.key === "ArrowUp") {
-                                            e.preventDefault();
-                                            setSelectedIndex(
-                                                (prev) =>
-                                                    (prev -
-                                                        1 +
-                                                        filteredAgents.length) %
-                                                    filteredAgents.length
-                                            );
-                                            return;
-                                        }
-                                        if (e.key === "Enter") {
-                                            e.preventDefault();
-                                            selectAgent(
-                                                filteredAgents[selectedIndex]
-                                            );
-                                            return;
-                                        }
-                                        if (e.key === "Escape") {
-                                            e.preventDefault();
-                                            setShowAgentMenu(false);
-                                            return;
-                                        }
-                                    }
-
-                                                                            if (e.key === "Enter" && !e.shiftKey) {
-                                                                            e.preventDefault();
-                                                                            handleSend();
-                                                                        }
-                                                                    }}
-                                                                    placeholder={
-                                                                        agents.some((a) => a.identifier === "primary_agent")
-                                                                            ? "输入指令或使用 @ 呼叫智能体..."
-                                                                            : "正在连接智能体矩阵..."
-                                                                    }
-                                                                    className="w-full bg-transparent border-none focus:ring-0 p-3 text-sm font-medium resize-none min-h-[90px] outline-none placeholder:text-muted-foreground/30 leading-relaxed"
-                                                                />                            <div className="flex items-center justify-between px-2 pb-1.5">
-                                <div className="flex items-center gap-1">
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-8 w-8 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
-                                    >
-                                        <Paperclip size={16} />
-                                    </Button>
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-8 w-8 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
-                                        onClick={() =>
-                                            setShowAgentMenu(!showAgentMenu)
-                                        }
-                                    >
-                                        <AtSign size={16} />
-                                    </Button>
-                                </div>
-                                <Button
-                                    size="icon"
-                                    disabled={!inputValue.trim() || isLoading || !agents.some(a => a.identifier === "primary_agent")}
-                                    onClick={handleSend}
-                                    className="h-9 w-9 rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-all"
-                                >
-                                    {isLoading ? (
-                                        <StopCircle
-                                            size={16}
-                                            className="animate-spin"
-                                        />
-                                    ) : (
-                                        <Send size={16} />
-                                    )}
-                                </Button>
-                            </div>
+                <div className="p-6 bg-background relative">
+                    {showAgentMenu && (
+                        <Card className="absolute bottom-full left-6 w-56 bg-popover border shadow-2xl p-1 z-50 rounded-xl mb-2">
+                            {agents.filter(a => a.name.toLowerCase().includes(mentionQuery.toLowerCase())).map((agent, index) => (
+                                <button key={agent.id} onClick={() => { setInputValue(inputValue.substring(0, inputValue.lastIndexOf("@")) + "@" + agent.name + " "); setShowAgentMenu(false); }} className={`w-full flex items-center gap-2.5 p-1.5 rounded-lg text-left ${index === selectedIndex ? "bg-primary/20" : "hover:bg-primary/10"}`}>
+                                    <div className="w-6 h-6 rounded-md overflow-hidden bg-muted"><img src={agent.avatar} className="w-full h-full object-cover" /></div>
+                                    <div className="flex flex-col min-w-0"><span className="text-[11px] font-bold truncate">{agent.name}</span><span className="text-[9px] text-muted-foreground truncate">{agent.role}</span></div>
+                                </button>
+                            ))}
                         </Card>
-                    </div>
+                    )}
+                    <Card className="bg-background/50 border-border/40 p-1.5 flex flex-col gap-1 rounded-xl">
+                        <textarea ref={textareaRef} value={inputValue} onChange={(e) => { setInputValue(e.target.value); const lastAt = e.target.value.lastIndexOf("@"); if (lastAt !== -1 && (lastAt === 0 || e.target.value[lastAt-1] === " ")) { setShowAgentMenu(true); setMentionQuery(e.target.value.substring(lastAt+1)); } else { setShowAgentMenu(false); } }} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }} placeholder="输入指令或使用 @ 呼叫智能体..." className="w-full bg-transparent border-none p-3 text-sm font-medium resize-none min-h-[90px] outline-none" />
+                        <div className="flex items-center justify-between px-2 pb-1.5"><div className="flex items-center gap-1"><Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground"><Paperclip size={16} /></Button><Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" onClick={() => setShowAgentMenu(!showAgentMenu)}><AtSign size={16} /></Button></div><Button size="icon" disabled={!inputValue.trim() || isLoading} onClick={handleSend} className="h-9 w-9 rounded-full bg-primary text-primary-foreground">{isLoading ? <StopCircle size={16} className="animate-spin" /> : <Send size={16} />}</Button></div>
+                    </Card>
                 </div>
             </section>
 
-            {/* === 3. Main Display Panel === */}
-            <div className="flex-1 flex flex-col min-w-0 relative h-full bg-background">
-                <header className="h-12 border-b border-border/40 bg-background flex items-center justify-between px-6 shrink-0 sticky top-0 z-20">
-                    <div className="flex items-center gap-4">
-                        {!isFlowOpen && (
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => setIsFlowOpen(true)}
-                                className="h-8 w-8 text-muted-foreground hover:text-background bg-primary/5 transition-colors"
-                            >
-                                <PanelLeft size={16} className="rotate-180" />
-                            </Button>
-                        )}
-                        <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-muted-foreground/50">
-                            <span>控制台</span>
-                            <span className="text-border">/</span>
-                            <span className="text-foreground/70">执行面板</span>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-4">
-                        <div className="flex -space-x-2">
-                            <TooltipProvider>
-                                {agents.map((agent) => (
-                                    <Tooltip key={agent.id}>
-                                        <TooltipTrigger asChild>
-                                            <Avatar className="w-7 h-7 border-2 border-background shadow-none ring-1 ring-border/50 cursor-help">
-                                                <AvatarImage
-                                                    src={agent.avatar}
-                                                    alt={agent.name}
-                                                />
-                                                <AvatarFallback className="text-[10px] bg-muted">
-                                                    {agent.name.charAt(0)}
-                                                </AvatarFallback>
-                                            </Avatar>
-                                        </TooltipTrigger>
-                                        <TooltipContent
-                                            side="bottom"
-                                            className="flex flex-row items-center gap-2.5 py-1.5 px-3"
-                                        >
-                                            <span className="font-bold text-xs">
-                                                {agent.name}
-                                            </span>
-                                            <span className="text-[10px] font-black uppercase tracking-widest text-primary bg-primary/10 px-1.5 py-0.5 rounded-md border border-primary/20">
-                                                {agent.role}
-                                            </span>
-                                        </TooltipContent>
-                                    </Tooltip>
-                                ))}
-                            </TooltipProvider>
-                        </div>
-                    </div>
+            <div className="flex-1 flex flex-col min-w-0 bg-background relative h-full">
+                <header className="h-12 border-b border-border/40 flex items-center justify-between px-6 shrink-0 sticky top-0 z-20 bg-background">
+                    <div className="flex items-center gap-4">{!isFlowOpen && <Button variant="ghost" size="icon" onClick={() => setIsFlowOpen(true)} className="h-8 w-8"><PanelLeft size={16} className="rotate-180" /></Button>}<div className="text-[11px] font-bold uppercase opacity-50">控制台 / 执行面板</div></div>
+                    <div className="flex -space-x-2"><TooltipProvider>{agents.map(a => <Tooltip key={a.id}><TooltipTrigger asChild><Avatar className="w-7 h-7 border-2 border-background ring-1 ring-border/50"><AvatarImage src={a.avatar} /><AvatarFallback className="text-[10px]">{a.name.charAt(0)}</AvatarFallback></Avatar></TooltipTrigger><TooltipContent side="bottom" className="text-xs font-bold p-2">{a.name} - {a.role}</TooltipContent></Tooltip>)}</TooltipProvider></div>
                 </header>
-
-                <main className="flex-1 flex flex-col relative overflow-hidden">
-                    <div className="flex-1 flex flex-col bg-card rounded-2xl border border-border/40 shadow-none m-6 overflow-hidden relative animate-in fade-in zoom-in-95 duration-500">
+                <main className="flex-1 p-6 relative overflow-hidden">
+                    <div className="h-full bg-card rounded-2xl border border-border/40 relative overflow-hidden flex flex-col">
                         {activeReport ? (
-                            <ScrollArea className="flex-1 h-0 bg-background">
-                                <div className="p-6 max-w-8xl mx-auto">
-                                    <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 space-y-12 pb-12">
-                                        <div className="flex items-end justify-between border-b border-border pb-10">
-                                            <div className="space-y-5">
-                                                <Badge className="bg-primary/10 text-primary border-primary/20 font-black text-[10px] px-3.5 py-1 uppercase tracking-[0.2em]">
-                                                    {activeReport.status}
-                                                </Badge>
-                                                <h2 className="text-5xl font-black tracking-tighter italic leading-none text-foreground">
-                                                    {activeReport.title}
-                                                </h2>
-                                                <div className="flex items-center gap-5 text-muted-foreground">
-                                                    <div className="flex items-center gap-2">
-                                                        <Globe
-                                                            size={14}
-                                                            className="text-primary/60"
-                                                        />
-                                                        <span className="text-[11px] font-bold uppercase tracking-widest">
-                                                            {
-                                                                activeReport.product
-                                                            }
-                                                        </span>
-                                                    </div>
-                                                    <Separator
-                                                        orientation="vertical"
-                                                        className="h-4 opacity-50"
-                                                    />
-                                                    <span className="text-[11px] font-mono opacity-50 uppercase tracking-widest">
-                                                        {activeReport.timestamp}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                            <div className="w-16 h-16 bg-primary/5 border border-primary/10 rounded-2xl flex items-center justify-center text-primary/40 shadow-inner">
-                                                <Zap size={32} />
-                                            </div>
-                                        </div>
-
-                                        <Card className="overflow-hidden border-border/60 shadow-none rounded-[24px] bg-card">
-                                            <div className="aspect-21/9 bg-muted overflow-hidden relative border-b border-border/50">
-                                                <img
-                                                    src="https://images.unsplash.com/photo-1541506618330-7c369fc759b5?q=80&w=1000&auto=format&fit=crop"
-                                                    alt="Strategic Analysis"
-                                                    className="w-full h-full object-cover saturate-50 hover:saturate-100 transition-all duration-1000"
-                                                />
-                                                <div className="absolute inset-0 bg-linear-to-t from-card via-transparent to-transparent opacity-60" />
-                                                <div className="absolute bottom-8 left-10">
-                                                    <Badge className="bg-green-600 text-white border-none font-black text-[10px] px-4 py-1.5 tracking-widest uppercase">
-                                                        分析结果已就绪
-                                                    </Badge>
-                                                </div>
-                                            </div>
-                                            <div className="p-10 space-y-12">
-                                                <div className="grid grid-cols-3 gap-10 text-center">
-                                                    <div className="space-y-3">
-                                                        <span className="text-[10px] font-black text-muted-foreground/60 uppercase tracking-[0.3em]">
-                                                            预估回报
-                                                        </span>
-                                                        <div className="text-4xl font-black text-primary tracking-tighter">
-                                                            35.2%
-                                                        </div>
-                                                    </div>
-                                                    <div className="space-y-3 border-l border-border/50 pl-10">
-                                                        <span className="text-[10px] font-black text-muted-foreground/60 uppercase tracking-[0.3em]">
-                                                            置信度
-                                                        </span>
-                                                        <div className="text-4xl font-black tracking-tighter text-foreground">
-                                                            0.94
-                                                        </div>
-                                                    </div>
-                                                    <div className="space-y-3 border-l border-border/50 pl-10">
-                                                        <span className="text-[10px] font-black text-muted-foreground/60 uppercase tracking-[0.3em]">
-                                                            风险模型
-                                                        </span>
-                                                        <div className="text-4xl font-black text-orange-500 tracking-tighter uppercase">
-                                                            Low
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <Separator className="opacity-50" />
-                                                <div className="space-y-6">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="w-2 h-5 bg-primary rounded-full" />
-                                                        <h4 className="text-xs font-black uppercase tracking-[0.3em] text-foreground/80">
-                                                            策略分析摘要
-                                                        </h4>
-                                                    </div>
-                                                    <p className="text-sm leading-relaxed text-muted-foreground font-medium bg-muted/10 p-8 rounded-2xl border border-border/40 border-dashed">
-                                                        {activeReport.details}{" "}
-                                                        本次分析已同步检索全球
-                                                        48
-                                                        个主要市场的实时波动数据。建议立即锁定相关资源并启动跨境协同流。
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </Card>
-                                    </div>
-                                </div>
-                            </ScrollArea>
+                            <ScrollArea className="flex-1 p-8"><div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                                <div className="border-b pb-6"><Badge className="bg-primary/10 text-primary mb-4">{activeReport.status}</Badge><h2 className="text-4xl font-black italic tracking-tighter">{activeReport.title}</h2></div>
+                                <Card className="p-8 space-y-6"><div className="flex items-center gap-3"><div className="w-2 h-5 bg-primary rounded-full" /><h4 className="text-xs font-black uppercase tracking-widest">策略分析摘要</h4></div><p className="text-sm leading-relaxed text-muted-foreground font-medium bg-muted/10 p-6 rounded-xl border-dashed border">{activeReport.details} 本次分析已同步检索实时波动数据。</p></Card>
+                            </div></ScrollArea>
                         ) : (
-                            <div className="flex-1 flex flex-col items-center justify-center bg-background text-center space-y-8 opacity-30 grayscale mix-blend-luminosity">
-                                <div className="relative">
-                                    <div className="absolute inset-0 bg-primary/10 blur-[120px] rounded-full scale-150" />
-                                    <div className="relative flex items-center justify-center">
-                                        <Zap
-                                            size={64}
-                                            className="text-primary/40 animate-pulse"
-                                        />
-                                    </div>
-                                </div>
-                                <h3 className="text-4xl font-black uppercase tracking-[0.5em] italic text-muted-foreground/20">
-                                    准备就绪
-                                </h3>
-                            </div>
+                            <div className="flex-1 flex flex-col items-center justify-center opacity-20 grayscale"><Zap size={64} className="animate-pulse" /><h3 className="text-2xl font-black uppercase tracking-widest mt-4">准备就绪</h3></div>
                         )}
                     </div>
                 </main>

@@ -127,9 +127,12 @@ class AgentRuntime:
                 
                 # 使用经过中间件处理后的 messages 进行调用
                 full_content = ""
+                print(f"\n[{self.name}] 正在思考...", end="", flush=True)
                 async for chunk in self.llm_factory.call_llm_stream_async(self.agent_id, current_messages, **kwargs):
+                    print(chunk, end="", flush=True) # 实时打印模型原始输出
                     full_content += chunk
                     yield {"type": "stream", "agent_id": self.agent_id, "content": chunk}
+                print("\n") # 换行，分隔不同轮次
                 
                 # After Think Hooks
                 for mw in self.middlewares:
@@ -139,7 +142,14 @@ class AgentRuntime:
                 self.chat_history.append({"role": "assistant", "content": full_content})
 
                 # 动作识别与执行
+                status_match = re.search(r"<status>(.*?)<\/status>", full_content, re.DOTALL)
                 action_match = re.search(r"<action>(.*?)<\/action>", full_content, re.DOTALL)
+                
+                # 如果 LLM 输出了状态标签，立即推送到前端
+                if status_match:
+                    status_text = status_match.group(1).strip()
+                    yield {"type": "status", "agent_id": self.agent_id, "content": status_text}
+
                 if action_match:
                     try:
                         action_data = json.loads(action_match.group(1).strip())

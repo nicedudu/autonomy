@@ -1,43 +1,55 @@
 import re
-from typing import List, Dict
+from typing import List, Dict, Optional
 from core.middleware.base import AgentMiddleware
-from core.schema.models import ActionCall, ActionResult
+from core.schema.models import ActionCall, ActionResult, Status
 
 class PlanningMiddleware(AgentMiddleware):
     """
-    规划同步中间件 (Active State Synchronization).
+    高级规划同步中间件 (Active State Synchronization).
     
-    功能：
-    1. 监听 Agent 的思考过程 (<thought>...<plan>...</plan>).
-    2. 如果检测到 <plan> 标签，自动解析其内容。
-    3. 调用 PlanningTool.sync_from_markdown() 实时更新后端状态。
-    
-    价值：
-    解决 Agent "只说不做"（只输出文本计划但不调用工具）的常见问题，
-    确保 System Prompt 中的 [Live Plan State] 永远是最新的。
+    1. 意图解析：解析 Agent 输出的 <plan> 标签并同步到持久化存储。
+    2. 自动标记：当检测到工具执行成功后，自动将当前步骤标记为已完成。
+    3. 状态注入：确保 System Prompt 能感知到最真实的执行进度。
     """
     
     def __init__(self):
         self.plan_pattern = re.compile(r"<plan>(.*?)</plan>", re.DOTALL)
+        self.last_action: Optional[ActionCall] = None
 
     async def on_after_think(self, agent_id: str, response: str) -> str:
-        """
-        在 Agent 思考完成后，立即通过中间件“旁路”提取并同步计划。
-        这不会干扰 Agent 原本的 Tool Call 逻辑，而是作为一种保障机制。
-        """
+        # 1. 自动同步 Markdown 计划
         match = self.plan_pattern.search(response)
         if match:
             plan_content = match.group(1).strip()
             if plan_content:
                 try:
-                    # 动态导入以避免循环依赖
                     from tools.planning import PlanningTool
                     tool = PlanningTool()
                     tool.sync_from_markdown(plan_content)
-                    # print(f"[PlanningMiddleware] ✅ 已将思维链中的计划自动同步至状态库。")
-                except Exception as e:
-                    print(f"[PlanningMiddleware] ⚠️ 自动同步计划失败: {e}")
-        
+                except Exception:
+                    pass
         return response
 
-    # 其他钩子保持默认即可，我们主要关注 on_after_think 的副作用
+    async def on_before_action(self, agent_id: str, action: ActionCall):
+        # 记录当前执行的 Action，以便在结束后自动推断步骤
+        self.last_action = action
+
+    async def on_after_action(self, agent_id: str, action: ActionCall, result: ActionResult):
+        # 2. 自动状态跃迁逻辑
+        # 如果一个工具（非 planning 工具本身）执行成功，
+        # 我们寻找 PlanningTool 中第一个状态为 'not_started' 或 'in_progress' 的步骤并标记完成
+        if result.status == Status.SUCCESS and action.tool_name != "planning":
+            try:
+                from tools.planning import _ACTIVE_PLAN_ID, _PLANS_STORE
+                if _ACTIVE_PLAN_ID and _ACTIVE_PLAN_ID in _PLANS_STORE:
+                    plan = _PLANS_STORE[_ACTIVE_PLAN_ID]
+                    # 找到第一个还没完成的步骤
+                    for i, status in enumerate(plan["step_statuses"]):
+                        if status != "completed":
+                            plan["step_statuses"][i] = "completed"
+                            # print(f"[PlanningMiddleware] 🤖 自动将步骤 {i} 标记为已完成")
+                            break
+            except Exception:
+                pass
+        
+        self.last_action = None
