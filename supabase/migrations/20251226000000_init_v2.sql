@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS chat_sessions (
 -- 5. 全量供应商初始化
 INSERT INTO llm_providers (name, type, api_base, icon_url, supported_models)
 VALUES 
-('Modelscope', 'openai', 'https://api-inference.modelscope.cn/v1', 'https://api.dicebear.com/7.x/initials/svg?seed=Modelscope&backgroundColor=3b82f6', ARRAY['qwen-max', 'ZhipuAI/GLM-4.7', 'deepseek-ai/DeepSeek-V3.2']),
+('Modelscope', 'openai', 'https://api-inference.modelscope.cn/v1', 'https://api.dicebear.com/7.x/initials/svg?seed=Modelscope&backgroundColor=3b82f6', ARRAY['qwen-max', 'XiaomiMiMo/MiMo-V2-Flash', 'deepseek-ai/DeepSeek-V3.2']),
 ('OpenAI', 'openai', 'https://api.openai.com/v1', 'https://api.dicebear.com/7.x/initials/svg?seed=OpenAI&backgroundColor=00a67e', ARRAY['gpt-4o', 'gpt-4o-mini', 'o1-preview', 'o1-mini']),
 ('DeepSeek', 'openai', 'https://api.deepseek.com', 'https://api.dicebear.com/7.x/initials/svg?seed=DeepSeek&backgroundColor=4d6ef5', ARRAY['deepseek-chat', 'deepseek-coder', 'deepseek-reasoner']),
 ('Anthropic', 'anthropic', 'https://api.anthropic.com/v1', 'https://api.dicebear.com/7.x/initials/svg?seed=Anthropic&backgroundColor=d97706', ARRAY['claude-3-5-sonnet-20241022', 'claude-3-7-sonnet-20250219']),
@@ -62,7 +62,7 @@ ON CONFLICT (name) DO UPDATE SET
 
 -- 6. 生产级 Base Instruction 初始化 (全量恢复)
 INSERT INTO system_settings (id, default_provider_id, default_model, core_system_prompt) 
-VALUES (1, (SELECT id FROM llm_providers WHERE name = 'Modelscope' LIMIT 1), 'ZhipuAI/GLM-4.7', 
+VALUES (1, (SELECT id FROM llm_providers WHERE name = 'Modelscope' LIMIT 1), 'XiaomiMiMo/MiMo-V2-Flash', 
 $$You are an AI Agent developed by the Autonomy Team. You are an expert execution system designed to resolve complex, multi-step objectives with surgical precision, absolute efficiency, and rigorous adherence to engineering conventions.
 
 [CORE MANDATES]
@@ -107,12 +107,12 @@ ON CONFLICT (id) DO UPDATE SET
 INSERT INTO agents (identifier, name, role, avatar, model, provider_id, system_prompt)
 VALUES 
 (
-  'primary_agent', 'Autonomy Core', 'Coordinator', 'https://api.dicebear.com/7.x/avataaars/svg?seed=Core', 'ZhipuAI/GLM-4.7', 
+  'primary_agent', 'Autonomy Core', 'Coordinator', 'https://api.dicebear.com/7.x/avataaars/svg?seed=Core', 'XiaomiMiMo/MiMo-V2-Flash', 
   (SELECT id FROM llm_providers WHERE name = 'Modelscope'),
   $$You are the primary orchestration node of the Autonomy system. Your mission is to audit the user's high-level intent, map the environmental context, and strategically decompose complex objectives into atomic tasks for specialized peers. You are responsible for the final synthesis and verification of all outcomes.$$
 ),
 (
-  'specialist_agent', 'Autonomy Specialist', 'Analyst', 'https://api.dicebear.com/7.x/avataaars/svg?seed=Specialist', 'ZhipuAI/GLM-4.7', 
+  'specialist_agent', 'Autonomy Specialist', 'Analyst', 'https://api.dicebear.com/7.x/avataaars/svg?seed=Specialist', 'XiaomiMiMo/MiMo-V2-Flash', 
   (SELECT id FROM llm_providers WHERE name = 'Modelscope'),
   $$You are a high-density specialized execution node. You receive specific assignments from the Coordinator. Your responsibility is to provide deep technical analysis, precise data extraction, or robust code execution. Your output must be strictly data-driven and actionable. Do not engage in strategic meta-talk; focus exclusively on solving the assigned task with maximum precision.$$
 )

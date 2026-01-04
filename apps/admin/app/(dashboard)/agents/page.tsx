@@ -39,33 +39,50 @@ export default function AdminAgentsThemeAligned() {
     const fetchData = async () => {
         setLoading(true);
         try {
-            // 优先获取注册中心与数据库合并后的智能体列表
-            const agentsRes = await fetch("http://localhost:8000/api/agents");
-            const agentsData = await agentsRes.json();
-            
-            const { data: providersData } = await supabase
-                .from("llm_providers")
-                .select("*");
-            const { data: settingsData } = await supabase
-                .from("system_settings")
-                .select("*")
-                .single();
+            // 1. 获取本地引擎数据 (增加鲁棒性)
+            let engineAgents: any[] = [];
+            try {
+                // 使用 127.0.0.1 提高连接稳定性
+                const agentsRes = await fetch("http://127.0.0.1:8000/api/agents", {
+                    signal: AbortSignal.timeout(3000) // 3秒超时，防止无限挂起
+                });
+                if (agentsRes.ok) {
+                    engineAgents = await agentsRes.json();
+                }
+            } catch (engineErr) {
+                console.warn("本地引擎 API 离线，将仅显示数据库数据:", engineErr);
+            }
 
-            if (agentsData) setAgents(agentsData);
-            if (providersData) setProviders(providersData);
-            if (settingsData) {
+            // 2. 获取 Supabase 云端数据
+            const [providersRes, settingsRes] = await Promise.all([
+                supabase.from("llm_providers").select("*"),
+                supabase.from("system_settings").select("*").single()
+            ]);
+
+            // 3. 数据合并与状态更新
+            if (engineAgents.length > 0) {
+                setAgents(engineAgents);
+            } else {
+                // 如果引擎不可用，从数据库获取备选列表
+                const { data: dbAgents } = await supabase.from("agents").select("*").order("identifier");
+                if (dbAgents) setAgents(dbAgents);
+            }
+
+            if (providersRes.data) setProviders(providersRes.data);
+            if (settingsRes.data) {
                 setGeneralConfig({
-                    provider_id: settingsData.default_provider_id,
-                    model: settingsData.default_model,
-                    core_system_prompt: settingsData.core_system_prompt || "",
+                    provider_id: settingsRes.data.default_provider_id,
+                    model: settingsRes.data.default_model,
+                    core_system_prompt: settingsRes.data.core_system_prompt || "",
                 });
             }
 
-            if (agentsData && agentsData.length > 0 && !selectedAgent) {
-                setSelectedAgent(agentsData[0]);
+            // 自动选择第一个 Agent
+            if (engineAgents.length > 0 && !selectedAgent) {
+                setSelectedAgent(engineAgents[0]);
             }
         } catch (err) {
-            console.error("Admin fetch error:", err);
+            console.error("Admin 全局加载失败:", err);
         }
         setLoading(false);
     };

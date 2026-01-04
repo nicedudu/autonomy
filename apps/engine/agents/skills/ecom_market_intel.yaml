@@ -1,7 +1,0 @@
-skill_id: ecom_market_intel
-name: Ecommerce Market Intelligence
-description: "Scans platforms like TikTok, Amazon, and Instagram to identify non-consensus product trends and consumer pain points."
-parameters:
-  platform: "string (e.g., tiktok)"
-  target_niche: "string"
-implementation: "tools/market_scraper.py"

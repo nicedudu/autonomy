@@ -1,0 +1,52 @@
+{
+  "core_tools": [
+    {
+      "name": "web_search",
+      "description": "实时互联网搜索，用于获取最新的事实、数据、汇率或新闻信息。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "具体的搜索关键词"
+          },
+          "provider": {
+            "type": "string",
+            "enum": ["duckduckgo", "tavily", "google"],
+            "description": "指定搜索引擎供应商（可选）"
+          }
+        },
+        "required": ["query"]
+      }
+    },
+    {
+      "name": "web_fetch",
+      "description": "提取指定 URL 的网页内容，并将其转换为干净的 Markdown 文本。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "目标网页的完整 URL"
+          }
+        },
+        "required": ["url"]
+      }
+    },
+    {
+      "name": "researcher",
+      "description": "多维度并发深度调研。自动执行意图拆解、并发搜索、内容抓取、分块摘要及最终报告合成。适用于需要高准确度、全面背景信息的复杂调研任务。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "需要深度研究的复杂课题或主题"
+          }
+        },
+        "required": ["query"]
+      }
+    }
+  ],
+  "specialized_skills_placeholder": "专项技能将从 Registry 动态加载并与此处格式对齐"
+}

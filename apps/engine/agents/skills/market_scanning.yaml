@@ -1,8 +1,0 @@
-skill_id: market_scanning
-name: Market Trend Scanner
-description: "Scans emerging trends and high-engagement products for a specific category across TikTok, Instagram, and Amazon."
-parameters:
-  category:
-    type: string
-    description: "Product category to scan (e.g., 'pet supplies', 'smart home')"
-implementation: "tools/market_scraper.py"
