@@ -46,6 +46,39 @@
         },
         "required": ["query"]
       }
+    },
+    {
+      "name": "planning",
+      "description": "任务规划与进度管理工具。用于创建长程任务计划、更新步骤状态及跟踪进度。当任务步骤超过 3 步时必须使用。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "string",
+            "enum": ["create", "update", "mark_step", "get"],
+            "description": "执行的操作：create(新建), update(更新), mark_step(标记状态), get(查看当前)"
+          },
+          "title": {
+            "type": "string",
+            "description": "计划标题 (create/update)"
+          },
+          "steps": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "计划步骤列表 (create/update)"
+          },
+          "step_index": {
+            "type": "integer",
+            "description": "要标记状态的步骤索引 (mark_step)"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["not_started", "in_progress", "completed", "blocked"],
+            "description": "步骤的新状态 (mark_step)"
+          }
+        },
+        "required": ["command"]
+      }
     }
   ],
   "specialized_skills_placeholder": "专项技能将从 Registry 动态加载并与此处格式对齐"

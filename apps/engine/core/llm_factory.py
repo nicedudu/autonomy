@@ -84,36 +84,53 @@ class LLMFactory:
 
     async def call_llm_stream_async(self, agent_id: str, messages: List[Dict[str, str]], **kwargs):
         """
-        标准化异步流式调用。
+        标准化异步流式调用 (带自动重试)。
         """
         config = self._resolve_config(agent_id)
         client = self._get_async_client(config)
         
-        # 准备 SDK 调用参数
-        # 从 kwargs 中提取参数以覆盖配置，并防止重复传入给 create 方法
         model = kwargs.pop("model", config["model"])
         temperature = kwargs.pop("temperature", config["temperature"])
         
         print(f"\n[LLM Request] Agent: {agent_id} | Model: {model} | Temp: {temperature}")
         
-        try:
-            stream = await client.chat.completions.create(
-                model=model,
-                messages=messages,
-                temperature=temperature,
-                stream=True,
-                **kwargs
-            )
-            async for chunk in stream:
-                if chunk.choices and chunk.choices[0].delta.content:
-                    yield chunk.choices[0].delta.content
-        except Exception as e:
-            print(f"\n[LLM Error] 流式请求失败: {str(e)}")
-            raise e
+        max_retries = 3
+        retry_delay = 2.0
+        
+        for attempt in range(max_retries + 1):
+            try:
+                stream = await client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    temperature=temperature,
+                    stream=True,
+                    **kwargs
+                )
+                async for chunk in stream:
+                    if chunk.choices and chunk.choices[0].delta.content:
+                        yield chunk.choices[0].delta.content
+                return # 成功执行则退出
+                
+            except APIStatusError as e:
+                if e.status_code == 429: # Rate Limit
+                    if attempt < max_retries:
+                        wait_time = retry_delay * (2 ** attempt)
+                        print(f"\n[LLM Warning] 429 限流，将在 {wait_time}s 后重试 (第 {attempt+1}/{max_retries} 次)...")
+                        await asyncio.sleep(wait_time)
+                        continue
+                    else:
+                        print(f"\n[LLM Error] 重试耗尽: {str(e)}")
+                        raise e
+                else:
+                    print(f"\n[LLM Error] API 错误: {str(e)}")
+                    raise e
+            except Exception as e:
+                print(f"\n[LLM Error] 未知异常: {str(e)}")
+                raise e
 
     def call_default_llm(self, messages: List[Dict[str, str]], **kwargs) -> LLMResponse:
         """
-        系统级同步调用逻辑。主要用于内部任务（摘要、合成等）。
+        系统级同步调用逻辑 (带自动重试)。
         """
         config = self._resolve_config("system_default")
         
@@ -126,24 +143,41 @@ class LLMFactory:
         model = kwargs.pop("model", config["model"])
         temperature = kwargs.pop("temperature", config["temperature"])
 
-        try:
-            response = client.chat.completions.create(
-                model=model,
-                messages=messages,
-                temperature=temperature,
-                stream=False,
-                **kwargs
-            )
-            
-            # 安全提取 usage 详情
-            usage_raw = response.usage.model_dump() if hasattr(response.usage, 'model_dump') else {}
-            
-            return LLMResponse(
-                content=response.choices[0].message.content,
-                model=model,
-                usage=usage_raw,
-                finish_reason=response.choices[0].finish_reason
-            )
-        except Exception as e:
-            print(f"\n[LLM Error] 系统调用失败: {str(e)}")
-            raise e
+        max_retries = 3
+        retry_delay = 2.0
+        import time
+
+        for attempt in range(max_retries + 1):
+            try:
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    temperature=temperature,
+                    stream=False,
+                    **kwargs
+                )
+                
+                usage_raw = response.usage.model_dump() if hasattr(response.usage, 'model_dump') else {}
+                
+                return LLMResponse(
+                    content=response.choices[0].message.content,
+                    model=model,
+                    usage=usage_raw,
+                    finish_reason=response.choices[0].finish_reason
+                )
+            except APIStatusError as e:
+                if e.status_code == 429:
+                    if attempt < max_retries:
+                        wait_time = retry_delay * (2 ** attempt)
+                        print(f"\n[LLM Warning] 系统调用 429 限流，等待 {wait_time}s...")
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        print(f"\n[LLM Error] 系统调用重试耗尽: {str(e)}")
+                        raise e
+                else:
+                    print(f"\n[LLM Error] 系统调用失败: {str(e)}")
+                    raise e
+            except Exception as e:
+                print(f"\n[LLM Error] 系统调用异常: {str(e)}")
+                raise e

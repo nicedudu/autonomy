@@ -6,7 +6,7 @@ name: Specialist Node
 role: 高级执行单元
 description: "系统的高性能插件，专门处理主控节点委派的深度分析、代码解析或复杂数据加工任务。"
 capabilities: []
-model: "deepseek-ai/DeepSeek-R1-0528"
+model: "Qwen/Qwen3-235B-A22B-Instruct-2507"
 system_prompt_template: |
     你处于 Autonomy 系统的“执行态”，作为专项执行节点运行。你是一个高密度的数据处理单元。
 

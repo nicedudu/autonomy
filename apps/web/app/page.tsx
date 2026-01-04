@@ -651,8 +651,64 @@ export default function ExecutionConsole() {
     const [isFlowOpen, setIsFlowOpen] = useState(true);
     const [flowWidth, setFlowWidth] = useState(380);
     const [isResizing, setIsResizing] = useState(false);
+    const [isHovering, setIsHovering] = useState(false);
+    const [isAtBottom, setIsAtBottom] = useState(true);
+    const [showScrollButton, setShowScrollButton] = useState(false);
+    const [hasNewMessages, setHasNewMessages] = useState(false);
+    
     const scrollRef = useRef<HTMLDivElement>(null);
+    const viewportRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const isProgrammaticScroll = useRef(false);
+
+    // --- Scroll Logic ---
+    const scrollToBottom = (behavior: ScrollBehavior = "smooth") => {
+        if (viewportRef.current) {
+            isProgrammaticScroll.current = true;
+            setShowScrollButton(false);
+            
+            viewportRef.current.scrollTo({
+                top: viewportRef.current.scrollHeight,
+                behavior
+            });
+            
+            // 延迟重置，确保平滑滚动完成后再允许按钮逻辑
+            setTimeout(() => {
+                isProgrammaticScroll.current = false;
+                setIsAtBottom(true);
+                setHasNewMessages(false);
+            }, 500);
+        }
+    };
+
+    const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+        if (isProgrammaticScroll.current) return;
+
+        const target = e.currentTarget;
+        const distanceToBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
+        
+        // 判定是否在底部 (用于自动滚动)
+        const atBottom = distanceToBottom < 20;
+        setIsAtBottom(atBottom);
+        
+        // 滚动阈值：向上滚动超过 100px 则显示浮动按钮
+        setShowScrollButton(distanceToBottom > 100);
+        
+        if (atBottom) {
+            setHasNewMessages(false);
+        }
+    };
+
+    useEffect(() => {
+        if (!messages.length) return;
+
+        if (!isHovering && isAtBottom) {
+            scrollToBottom("auto");
+        } else if (!isAtBottom) {
+            // 如果不在底部且有新消息
+            setHasNewMessages(true);
+        }
+    }, [messages, isLoading]);
 
     const handleMouseDown = (e: React.MouseEvent) => {
         setIsResizing(true);
@@ -1191,99 +1247,129 @@ export default function ExecutionConsole() {
                         </Button>
                     </header>
 
-                    <ScrollArea className="flex-1 h-0 bg-muted/5">
-                        <div className="p-6 space-y-8 pb-12 max-w-full">
-                            {messages.length === 0 && (
-                                <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-1000">
-                                    <div className="space-y-4 text-primary">
-                                        <div className="flex items-center gap-3">
-                                            <Sparkles
-                                                size={20}
-                                                className="fill-primary/20"
-                                            />
-                                            <h3 className="text-sm font-bold tracking-tight text-primary/80 uppercase">
-                                                新会话已就绪
-                                            </h3>
-                                        </div>
-                                        <p className="text-xs font-medium text-muted-foreground leading-relaxed">
-                                            智能体矩阵已准备就绪。请输入您的指令以启动全域策略分析或任务调度。
-                                        </p>
-                                    </div>
-
-                                    <div className="flex flex-col gap-2">
-                                        <div className="flex items-center gap-2 px-1 mb-1 opacity-50">
-                                            <Command size={10} />
-                                            <p className="text-[9px] font-black uppercase tracking-[0.2em]">
-                                                快捷指令
+                    <div 
+                        className="flex-1 min-h-0 relative flex flex-col bg-muted/5"
+                        onMouseEnter={() => setIsHovering(true)}
+                        onMouseLeave={() => setIsHovering(false)}
+                    >
+                        <ScrollArea 
+                            className="flex-1 h-0" 
+                            viewportRef={viewportRef}
+                            onScroll={handleScroll}
+                        >
+                            <div className="p-6 space-y-8 pb-12 max-w-full">
+                                {messages.length === 0 && (
+                                    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-1000">
+                                        <div className="space-y-4 text-primary">
+                                            <div className="flex items-center gap-3">
+                                                <Sparkles
+                                                    size={20}
+                                                    className="fill-primary/20"
+                                                />
+                                                <h3 className="text-sm font-bold tracking-tight text-primary/80 uppercase">
+                                                    新会话已就绪
+                                                </h3>
+                                            </div>
+                                            <p className="text-xs font-medium text-muted-foreground leading-relaxed">
+                                                智能体矩阵已准备就绪。请输入您的指令以启动全域策略分析或任务调度。
                                             </p>
                                         </div>
-                                        {[
-                                            "分析 24 小时内全平台选品趋势",
-                                            "评估供应链稳定性",
-                                            "生成 Q1 运营提案",
-                                        ].map((tip) => (
-                                            <button
-                                                key={tip}
-                                                onClick={() =>
-                                                    setInputValue(tip)
-                                                }
-                                                className="text-left p-3.5 rounded-xl border border-border bg-background/50 hover:border-primary/40 hover:bg-primary/5 transition-all text-xs font-semibold text-muted-foreground hover:text-foreground group flex items-center justify-between shadow-none"
-                                            >
-                                                {tip}
-                                                <Plus
-                                                    size={12}
-                                                    className="opacity-0 group-hover:opacity-100 transition-opacity text-primary"
-                                                />
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
 
-                            {messages.map((msg, index) => (
-                                <div
-                                    key={msg.id}
-                                    className="space-y-4 animate-in fade-in duration-500"
-                                >
-                                    {msg.role === "assistant" ? (
-                                        <AssistantMessageItem
-                                            msg={msg}
-                                            isLatest={
-                                                index === messages.length - 1
-                                            }
-                                            isLoading={isLoading}
-                                        />
-                                    ) : (
-                                        <div className="flex flex-col items-end space-y-1.5 w-full min-w-0">
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-[9px] font-medium text-muted-foreground/40 tabular-nums">
-                                                    {new Date(
-                                                        msg.timestamp
-                                                    ).toLocaleTimeString([], {
-                                                        hour: "2-digit",
-                                                        minute: "2-digit",
-                                                    })}
-                                                </span>
-                                                <span className="text-[10px] font-black text-primary/40 tracking-widest">
-                                                    You
-                                                </span>
+                                        <div className="flex flex-col gap-2">
+                                            <div className="flex items-center gap-2 px-1 mb-1 opacity-50">
+                                                <Command size={10} />
+                                                <p className="text-[9px] font-black uppercase tracking-[0.2em]">
+                                                    快捷指令
+                                                </p>
                                             </div>
-                                            <div className="bg-primary/5 border border-primary/20 p-4 rounded-2xl rounded-tr-none text-sm font-semibold max-w-[90%] text-primary leading-relaxed shadow-none break-all">
-                                                <ReactMarkdown
-                                                    remarkPlugins={[remarkGfm]}
-                                                    components={
-                                                        MarkdownComponents
+                                            {[
+                                                "分析 24 小时内全平台选品趋势",
+                                                "评估供应链稳定性",
+                                                "生成 Q1 运营提案",
+                                            ].map((tip) => (
+                                                <button
+                                                    key={tip}
+                                                    onClick={() =>
+                                                        setInputValue(tip)
                                                     }
+                                                    className="text-left p-3.5 rounded-xl border border-border bg-background/50 hover:border-primary/40 hover:bg-primary/5 transition-all text-xs font-semibold text-muted-foreground hover:text-foreground group flex items-center justify-between shadow-none"
                                                 >
-                                                    {msg.content}
-                                                </ReactMarkdown>
-                                            </div>
+                                                    {tip}
+                                                    <Plus
+                                                        size={12}
+                                                        className="opacity-0 group-hover:opacity-100 transition-opacity text-primary"
+                                                    />
+                                                </button>
+                                            ))}
                                         </div>
+                                    </div>
+                                )}
+
+                                {messages.map((msg, index) => (
+                                    <div
+                                        key={msg.id}
+                                        className="space-y-4 animate-in fade-in duration-500"
+                                    >
+                                        {msg.role === "assistant" ? (
+                                            <AssistantMessageItem
+                                                msg={msg}
+                                                isLatest={
+                                                    index === messages.length - 1
+                                                }
+                                                isLoading={isLoading}
+                                            />
+                                        ) : (
+                                            <div className="flex flex-col items-end space-y-1.5 w-full min-w-0">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-[9px] font-medium text-muted-foreground/40 tabular-nums">
+                                                        {new Date(
+                                                            msg.timestamp
+                                                        ).toLocaleTimeString([], {
+                                                            hour: "2-digit",
+                                                            minute: "2-digit",
+                                                        })}
+                                                    </span>
+                                                    <span className="text-[10px] font-black text-primary/40 tracking-widest">
+                                                        You
+                                                    </span>
+                                                </div>
+                                                <div className="bg-primary/5 border border-primary/20 p-4 rounded-2xl rounded-tr-none text-sm font-semibold max-w-[90%] text-primary leading-relaxed shadow-none break-all">
+                                                    <ReactMarkdown
+                                                        remarkPlugins={[remarkGfm]}
+                                                        components={
+                                                            MarkdownComponents
+                                                        }
+                                                    >
+                                                        {msg.content}
+                                                    </ReactMarkdown>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </ScrollArea>
+
+                        {/* --- Floating Scroll Control (Centered Pill) --- */}
+                        {showScrollButton && (
+                            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                <Button
+                                    size="sm"
+                                    onClick={() => scrollToBottom("smooth")}
+                                    className="rounded-full shadow-lg bg-primary text-primary-foreground hover:bg-primary/90 text-[10px] font-bold tracking-tight gap-2 h-9 px-4 transition-all active:scale-95 border-none"
+                                >
+                                    {hasNewMessages ? (
+                                        <Sparkles size={14} className="fill-current" />
+                                    ) : (
+                                        <ChevronDown size={14} />
                                     )}
-                                </div>
-                            ))}
-                        </div>
-                    </ScrollArea>
+                                    <span>
+                                        {hasNewMessages ? "查看新消息" : "回到最底部"}
+                                    </span>
+                                </Button>
+                            </div>
+                        )}
+                    </div>
 
                     <div className="p-6 bg-background relative">
                         {showAgentMenu && (

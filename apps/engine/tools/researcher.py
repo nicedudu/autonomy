@@ -2,7 +2,6 @@ import asyncio
 import json
 from typing import Any, Dict, List
 from core.llm_factory import LLMFactory
-from core.prompt_manager import prompt_manager
 from core.utils.text_processor import TextProcessor, RecursiveCharacterTextSplitter
 
 async def run(params: Dict[str, Any]) -> Dict[str, Any]:
@@ -10,6 +9,8 @@ async def run(params: Dict[str, Any]) -> Dict[str, Any]:
     工业级深度调研工具。
     采用分布式抓取与分级摘要算法，解决超长上下文和实时性挑战。
     """
+    from prompts.researcher import get_researcher_expansion_prompt, get_researcher_synthesis_prompt
+
     query = params.get("query")
     if not query:
         return {"status": "error", "message": "缺少调研主题 (query)。"}
@@ -20,7 +21,7 @@ async def run(params: Dict[str, Any]) -> Dict[str, Any]:
     
     # 1. 意图拆解
     print(f"\n{'*'*20} [Researcher: 意图拆解] {'*'*20}")
-    expand_system = prompt_manager.get_prompt("tools.researcher.expansion")
+    expand_system = get_researcher_expansion_prompt()
     try:
         expansion_resp = llm.call_default_llm([
             {"role": "system", "content": expand_system},
@@ -87,7 +88,7 @@ async def run(params: Dict[str, Any]) -> Dict[str, Any]:
         return {"status": "error", "message": "所有情报来源均无法访问。"}
 
     final_context = "\n\n---\n\n".join(valid_briefs)
-    synthesize_system = prompt_manager.get_prompt("tools.researcher.synthesis")
+    synthesize_system = get_researcher_synthesis_prompt()
     
     try:
         final_resp = llm.call_default_llm([

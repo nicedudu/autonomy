@@ -44,15 +44,15 @@ class Orchestrator:
                 
                 all_agents = discovery_service.agents.all().values()
                 team_roster = "团队名录:\n" + "\n".join([f"- @{m.name} ({m.agent_id}): {m.role}" for m in all_agents])
-                runtime.system_prompt = runtime.system_prompt.replace("{{team_roster}}", team_roster)
-                
-                if global_facts:
-                    runtime.system_prompt += f"\n\n[组织共识事实]:\n" + "\n".join(global_facts[-8:])
 
                 print(f"[Orchestrator] 调度激活 -> {runtime.name} ({current_agent_id})")
 
                 last_response = ""
-                async for chunk in runtime.execute_async(current_input):
+                async for chunk in runtime.execute_async(
+                    current_input, 
+                    team_roster=team_roster, 
+                    global_facts=global_facts
+                ):
                     if chunk["type"] == "stream":
                         last_response += chunk["content"]
                     yield chunk
