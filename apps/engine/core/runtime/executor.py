@@ -73,6 +73,14 @@ class AgentRuntime:
             global_facts=global_facts
         )
         
+        # --- 针对非主控节点的幕后模式约束 ---
+        if self.agent_id != "primary_agent":
+            prompt += "\n\n[幕后执行模式 - BACKEND MODE]\n"
+            prompt += "你当前作为专项执行节点运行。你的受众是主控节点（Orchestrator），而非终端用户。\n"
+            prompt += "1. 保持极度简洁，直接输出执行结果、数据或分析结论。\n"
+            prompt += "2. 严禁使用任何社交辞令（如“你好”、“很高兴为你服务”）。\n"
+            prompt += "3. 你必须维护全局计划状态（通过 <plan>），确保主控节点能感知你的进度。"
+
         if self.manifest.system_prompt_template:
             prompt += f"\n\n[角色专属指令]\n{self.manifest.system_prompt_template}"
         return prompt
@@ -164,8 +172,17 @@ class AgentRuntime:
                     yield {"type": "stream", "agent_id": self.agent_id, "content": chunk}
 
         except Exception as e:
+            # === 全局异常屏障 (Global Exception Barrier) ===
             is_rate_limit = "429" in str(e)
-            yield {"type": "error", "agent_id": self.agent_id, "content": "当前服务繁忙" if is_rate_limit else "系统运行异常"}
+            
+            # 后端打印详细日志供排查
+            if is_rate_limit:
+                print(f"\n[Autonomy Core] 🛑 限流触发 (429): {str(e)}")
+            else:
+                print(f"\n[Autonomy Core] 💥 运行时异常:\n{traceback.format_exc()}")
+
+            friendly_msg = "当前服务繁忙，请稍后重试。" if is_rate_limit else "系统运行异常，请联系管理员。"
+            yield {"type": "error", "agent_id": self.agent_id, "content": friendly_msg}
         finally:
             for mw in self.middlewares:
                 await mw.on_shutdown(self.agent_id)

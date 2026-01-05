@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import List, Optional
 from prompts.system import SYSTEM_PROMPT_TEMPLATE
-from prompts.planning import PLANNING_PROTOCOL, PLAN_STATUS_ICONS
+from prompts.planning import PLANNING_PROTOCOL
 from prompts.toolcall import TOOLCALL_PROTOCOL
 
 class PromptCompiler:
@@ -27,21 +27,22 @@ class PromptCompiler:
             facts_text = "\n".join(global_facts[-8:])
             facts_section = f"\n\n[组织共识事实]:\n{facts_text}"
 
-        # 2. 注入实时计划状态 (Live Plan State)
+        # 2. 注入实时计划状态 (Live Plan State - 采用与协议一致的 JSON 格式)
         current_plan_section = ""
         try:
             from tools.planning import _ACTIVE_PLAN_ID, _PLANS_STORE
+            import json
             if _ACTIVE_PLAN_ID and _ACTIVE_PLAN_ID in _PLANS_STORE:
                 plan = _PLANS_STORE[_ACTIVE_PLAN_ID]
-                plan_text = f"Plan: {plan['title']} (ID: {plan['plan_id']})\n"
-                
-                for i, (step, status) in enumerate(zip(plan["steps"], plan["step_statuses"])):
-                    icon = PLAN_STATUS_ICONS.get(status, "[?]")
-                    plan_text += f"{i}. {icon} {step}\n"
+                plan_json = [
+                    {"step": s, "status": st} 
+                    for s, st in zip(plan["steps"], plan["step_statuses"])
+                ]
                 
                 current_plan_section = (
-                    f"\n\n[当前活动计划 - LIVE PLAN STATE]\n{plan_text}\n"
-                    "注意：这是系统实时记录的计划状态。请依据此表推进任务，并及时更新状态。"
+                    f"\n\n[当前活动计划 - LIVE PLAN STATE]\n"
+                    f"```json\n{json.dumps(plan_json, ensure_ascii=False, indent=2)}\n```\n"
+                    "注意：这是系统实时记录的计划状态。请依据此 JSON 结构推进任务，并及时更新状态。"
                 )
         except (ImportError, Exception):
             pass

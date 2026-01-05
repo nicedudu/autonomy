@@ -10,7 +10,6 @@ import { Badge } from "@autonomy/ui/components/badge";
 import { Button } from "@autonomy/ui/components/button";
 import { Card } from "@autonomy/ui/components/card";
 import { ScrollArea } from "@autonomy/ui/components/scroll-area";
-import { Separator } from "@autonomy/ui/components/separator";
 import {
     Tooltip,
     TooltipContent,
@@ -19,20 +18,17 @@ import {
 } from "@autonomy/ui/components/tooltip";
 import {
     AtSign,
+    BadgeCheck,
     Brain,
     ChevronDown,
     ChevronRight,
-    Clock,
-    Command,
-    Globe,
-    LayoutGrid,
     Lightbulb,
+    Loader2,
     MessageSquare,
     PanelLeft,
     Paperclip,
     Plus,
     Send,
-    Settings,
     Sparkles,
     StopCircle,
     Zap,
@@ -109,11 +105,13 @@ const MarkdownComponents = {
 
     // --- Enhanced Lists ---
     li: ({ children }: any) => (
-        <li className="mb-1.5 min-w-0 break-all leading-relaxed">
-            {children}
-        </li>
+        <li className="mb-1.5 min-w-0 break-all leading-relaxed">{children}</li>
     ),
-    ul: ({ children }: any) => <ul className="mb-4 space-y-1 list-disc pl-5 marker:text-primary/40">{children}</ul>,
+    ul: ({ children }: any) => (
+        <ul className="mb-4 space-y-1 list-disc pl-5 marker:text-primary/40">
+            {children}
+        </ul>
+    ),
     ol: ({ children }: any) => (
         <ol className="list-decimal pl-5 mb-4 space-y-1.5 marker:text-primary/50 marker:font-mono marker:text-xs">
             {children}
@@ -141,10 +139,7 @@ const MarkdownComponents = {
         if (!inline && isJson) {
             try {
                 const jsonStr = String(children).replace(/\n$/, "");
-                if (
-                    jsonStr.includes("chartType") &&
-                    jsonStr.includes("data")
-                ) {
+                if (jsonStr.includes("chartType") && jsonStr.includes("data")) {
                     const data = JSON.parse(jsonStr);
                     if (data.chartType && data.data)
                         return <ChartRenderer data={data} />;
@@ -234,86 +229,105 @@ const MarkdownComponents = {
     hr: ({ children }: any) => <hr className="my-6 border-border/20" />,
 };
 
-// --- Todo List Renderer ---
-const PlanTodoView = ({ content }: { content: string }) => {
-    const lines = content.split("\n").filter((line) => line.trim() !== "");
+// --- Plan Progress View (Loading/Done Style) ---
+
+const PlanTodoView = ({
+    content,
+    isClosed,
+}: {
+    content: string;
+    isClosed: boolean;
+}) => {
+    const [displaySteps, setDisplaySteps] = useState<
+        { step: string; status: string }[]
+    >([]);
+
+    useEffect(() => {
+        if (!isClosed) return;
+
+        const cleanJson = content
+            .replace(/```json\n?/, "")
+            .replace(/```\n?$/, "")
+            .trim();
+
+        try {
+            const parsed = JSON.parse(cleanJson);
+
+            if (Array.isArray(parsed)) setDisplaySteps(parsed);
+        } catch (e) {
+            const items = cleanJson.match(
+                /"step":\s*"([^"]+)",\s*"status":\s*"([^"]+)"/g
+            );
+
+            if (items) {
+                const newSteps = items.map((item) => ({
+                    step: item.match(/"step":\s*"([^"]+)"/)?.[1] || "",
+
+                    status:
+                        item.match(/"status":\s*"([^"]+)"/)?.[1] ||
+                        "not_started",
+                }));
+
+                setDisplaySteps(newSteps);
+            }
+        }
+    }, [content, isClosed]);
+
+    // 过滤：仅显示已完成或正在进行的步骤，隐藏待办项以保持简洁
+
+    const activeSteps = displaySteps.filter(
+        (s) => s.status === "completed" || s.status === "in_progress"
+    );
+
+    if (activeSteps.length === 0) return null;
 
     return (
-        <div className="my-4 bg-primary/5 border border-primary/10 rounded-xl overflow-hidden shadow-sm animate-in fade-in slide-in-from-bottom-2">
-            <div className="bg-primary/10 px-3 py-2 border-b border-primary/10 flex items-center gap-2">
-                <LayoutGrid size={14} className="text-primary" />
-                <span className="text-[10px] font-black uppercase tracking-widest text-primary">
-                    执行计划 (Action Plan)
-                </span>
-            </div>
-            <div className="p-4 space-y-1.5">
-                {lines.map((line, i) => {
-                    const indentMatch = line.match(/^(\s*)/);
-                    const indentLevel = indentMatch ? Math.floor(indentMatch[0].length / 2) : 0;
-                    const trimmedLine = line.trim();
-                    const isTodoTask = /^[-*+]\s*\[[\sxX\/]\]/.test(trimmedLine);
-                    const isDone = /^[-*+]\s*\[[xX]\]/.test(trimmedLine);
-                    const isInProgress = /^[-*+]\s*\[\/\]/.test(trimmedLine);
-                    
-                    const cleanContent = trimmedLine
-                        .replace(/^[-*+]\s*(\[[\sxX\/]\])?\s*/, "")
-                        .replace(/^\d+\.\s*/, "")
-                        .replace(/<call>\s*(@\w+)\s*(.*?)\s*<\/call>/gs, "**$1** $2")
-                        .replace(/<call>\s*(@\w+)?\s*(.*?)$/gs, "**$1** $2");
+        <div className="my-4 space-y-2 border-l-2 border-primary/10 ml-3 pl-4 animate-in fade-in slide-in-from-left-2 duration-500">
+            {activeSteps.map((item, i) => {
+                const isDone = item.status === "completed";
 
-                    return (
-                        <div
-                            key={i}
-                            className="flex items-start gap-2 group transition-all"
-                            style={{ paddingLeft: `${indentLevel * 0.75}rem` }}
-                        >
-                            {isTodoTask ? (
-                                <div className="mt-1 shrink-0">
-                                    {isDone ? (
-                                        <div className="w-3.5 h-3.5 rounded-full bg-primary flex items-center justify-center shadow-sm">
-                                            <div className="w-1.5 h-1.5 bg-white rounded-full" />
-                                        </div>
-                                    ) : isInProgress ? (
-                                        <div className="w-3.5 h-3.5 rounded-full border-2 border-primary flex items-center justify-center animate-pulse">
-                                            <div className="w-1.5 h-1.5 bg-primary rounded-full animate-ping" />
-                                        </div>
-                                    ) : (
-                                        <div className="w-3.5 h-3.5 rounded-full border-2 border-primary/30 group-hover:border-primary/50 transition-colors" />
-                                    )}
+                return (
+                    <div key={i} className="flex items-center gap-3 group">
+                        <div className="shrink-0 relative">
+                            {isDone ? (
+                                <div className="w-4 h-4 rounded-full bg-green-500/10 flex items-center justify-center border border-green-500/20">
+                                    <BadgeCheck
+                                        size={10}
+                                        className="text-green-600"
+                                    />
                                 </div>
                             ) : (
-                                <div className="mt-2 shrink-0 flex justify-center w-3.5">
-                                    <div className="w-1 h-1 rounded-full bg-muted-foreground/30" />
+                                <div className="w-4 h-4 rounded-full bg-primary/10 flex items-center justify-center border border-primary/20">
+                                    <Loader2
+                                        size={10}
+                                        className="text-primary animate-spin"
+                                    />
                                 </div>
                             )}
-                            <div
-                                className={`text-[13px] font-medium leading-relaxed max-w-none flex-1 ${isDone ? "text-muted-foreground/50 line-through decoration-primary/20" : isInProgress ? "text-primary font-bold" : "text-foreground/80"}`}
-                            >
-                                <ReactMarkdown 
-                                    remarkPlugins={[remarkGfm]}
-                                    components={{
-                                        p: ({children}) => <span className="block mb-1 last:mb-0">{children}</span>,
-                                        strong: ({ children }: any) => {
-                                            const content = String(children);
-                                            if (content.startsWith("@")) {
-                                                return (
-                                                    <span className="inline-flex items-center gap-0.5 text-primary font-bold">
-                                                        {content}
-                                                    </span>
-                                                );
-                                            }
-                                            return <strong className="font-black text-foreground">{children}</strong>;
-                                        },
-                                        code: ({children}) => <code className="bg-primary/5 px-1 rounded text-primary/70">{children}</code>
-                                    }}
-                                >
-                                    {cleanContent}
-                                </ReactMarkdown>
-                            </div>
                         </div>
-                    );
-                })}
-            </div>
+
+                        <span
+                            className={`text-[11px] font-bold tracking-tight uppercase ${
+                                isDone
+                                    ? "text-muted-foreground/40"
+                                    : "text-primary animate-pulse"
+                            }`}
+                        >
+                            {isDone ? "Done" : "Loading"}
+                        </span>
+
+                        <span
+                            className={`text-xs font-medium ${
+                                isDone
+                                    ? "text-muted-foreground/60"
+                                    : "text-foreground/80"
+                            }`}
+                        >
+                            {item.step}
+                        </span>
+                    </div>
+                );
+            })}
         </div>
     );
 };
@@ -342,7 +356,10 @@ const AssistantMessageItem = ({
             if (startIdx === -1) break;
             const endIdx = content.indexOf(endTag, startIdx + startTag.length);
             results.push({
-                content: endIdx !== -1 ? content.substring(startIdx + startTag.length, endIdx) : content.substring(startIdx + startTag.length),
+                content:
+                    endIdx !== -1
+                        ? content.substring(startIdx + startTag.length, endIdx)
+                        : content.substring(startIdx + startTag.length),
                 isClosed: endIdx !== -1,
             });
             if (endIdx === -1) break;
@@ -358,7 +375,6 @@ const AssistantMessageItem = ({
     const isStreaming = isLatest && isLoading;
 
     let mainContent = content;
-    // Strip blocks that have dedicated UI renderers
     const blocksToHide = [
         { start: "<thought>", end: "</thought>" },
         { start: "<plan>", end: "</plan>" },
@@ -366,21 +382,33 @@ const AssistantMessageItem = ({
         { start: "<status>", end: "</status>" },
     ];
 
+    // --- 预防流式闪烁：移除所有未闭合的标签及其内容 ---
     blocksToHide.forEach((block) => {
         while (true) {
             const s = mainContent.indexOf(block.start);
             if (s === -1) break;
             const e = mainContent.indexOf(block.end, s);
             if (e !== -1) {
-                mainContent = mainContent.substring(0, s) + mainContent.substring(e + block.end.length);
+                // 完整块：直接切除
+                mainContent =
+                    mainContent.substring(0, s) +
+                    mainContent.substring(e + block.end.length);
             } else {
+                // 未闭合块：从开始标签位置截断后续所有内容，防止泄露
                 mainContent = mainContent.substring(0, s);
                 break;
             }
         }
     });
 
-    mainContent = mainContent.replace(/<call>\s*(@\w+)\s*(.*?)\s*<\/call>/gs, "\n\n> **$1** $2\n\n").trim();
+    // --- 极致防闪烁：处理末尾可能正在生成的标签前缀 (如 '<p', '</t') ---
+    if (isStreaming) {
+        mainContent = mainContent.replace(/<[a-zA-Z0-9\/]*$/g, "");
+    }
+
+    mainContent = mainContent
+        .replace(/<call>\s*(@\w+)\s*(.*?)\s*<\/call>/gs, "\n\n> **$1** $2\n\n")
+        .trim();
 
     return (
         <div className="space-y-3 w-full min-w-0 overflow-hidden">
@@ -388,31 +416,80 @@ const AssistantMessageItem = ({
                 <div className="flex items-center gap-2.5">
                     <div className="w-6 h-6 rounded-md bg-primary/10 overflow-hidden ring-1 ring-primary/20 flex items-center justify-center">
                         {msg.agent_avatar ? (
-                            <img src={msg.agent_avatar} alt={msg.agent_name} className="w-full h-full object-cover" />
+                            <img
+                                src={msg.agent_avatar}
+                                alt={msg.agent_name}
+                                className="w-full h-full object-cover"
+                            />
                         ) : (
-                            <span className="text-[10px] font-bold">{msg.agent_name?.charAt(0)}</span>
+                            <span className="text-[10px] font-bold">
+                                {msg.agent_name?.charAt(0)}
+                            </span>
                         )}
                     </div>
-                    <span className="text-[11px] font-bold text-foreground/80 tracking-widest">{msg.agent_name}</span>
+                    <span className="text-[11px] font-bold text-foreground/80 tracking-widest">
+                        {msg.agent_name}
+                    </span>
                 </div>
                 {msg.timestamp && (
                     <span className="text-[9px] font-medium text-muted-foreground/50 tabular-nums">
-                        {new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        {new Date(msg.timestamp).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                        })}
                     </span>
                 )}
             </div>
 
+            {/* --- 前置等待动画 --- */}
+            {isStreaming && !mainContent && !thought && !plan && (
+                <div className="flex gap-1.5 items-center p-2 animate-in fade-in duration-300">
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary/40 animate-bounce [animation-duration:0.8s] [animation-delay:-0.3s]"></span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary/40 animate-bounce [animation-duration:0.8s] [animation-delay:-0.15s]"></span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary/40 animate-bounce [animation-duration:0.8s]"></span>
+                </div>
+            )}
+
             {thought && (
-                <div className={`rounded-xl overflow-hidden transition-all w-full min-w-0 ${isThinkingExpanded ? "bg-muted/30 border border-border/40" : "bg-transparent"}`}>
-                    <button onClick={() => setIsThinkingExpanded(!isThinkingExpanded)} onMouseEnter={() => setIsHovered(true)} onMouseLeave={() => setIsHovered(false)} className="flex items-center gap-2 px-1.5 py-1.5 hover:text-foreground/80 transition-colors text-[10px] font-bold text-muted-foreground/70 uppercase tracking-tight">
+                <div
+                    className={`rounded-xl overflow-hidden transition-all w-full min-w-0 ${
+                        isThinkingExpanded
+                            ? "bg-muted/30 border border-border/40"
+                            : "bg-transparent"
+                    }`}
+                >
+                    <button
+                        onClick={() =>
+                            setIsThinkingExpanded(!isThinkingExpanded)
+                        }
+                        onMouseEnter={() => setIsHovered(true)}
+                        onMouseLeave={() => setIsHovered(false)}
+                        className="flex items-center gap-2 px-1.5 py-1.5 hover:text-foreground/80 transition-colors text-[10px] font-bold text-muted-foreground/70 uppercase tracking-tight"
+                    >
                         <div className="w-4 h-4 flex items-center justify-center">
-                            {isHovered ? (isThinkingExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />) : <Brain size={14} className="text-primary/60 animate-pulse" />}
+                            {isHovered ? (
+                                isThinkingExpanded ? (
+                                    <ChevronDown size={14} />
+                                ) : (
+                                    <ChevronRight size={14} />
+                                )
+                            ) : (
+                                <Brain
+                                    size={14}
+                                    className="text-primary/60 animate-pulse"
+                                />
+                            )}
                         </div>
-                        <span>{thought.isClosed ? "深度思考" : "深度思考中..."}</span>
+                        <span>
+                            {thought.isClosed ? "深度思考" : "深度思考中..."}
+                        </span>
                     </button>
                     {isThinkingExpanded && (
                         <div className="px-4 pb-3 text-xs leading-relaxed text-muted-foreground/60 italic font-medium border-t border-border/20 pt-2 break-all">
-                            <ReactMarkdown remarkPlugins={[remarkGfm]} components={MarkdownComponents}>
+                            <ReactMarkdown
+                                remarkPlugins={[remarkGfm]}
+                                components={MarkdownComponents}
+                            >
                                 {thought.content || "正在审视上下文..."}
                             </ReactMarkdown>
                         </div>
@@ -420,19 +497,27 @@ const AssistantMessageItem = ({
                 </div>
             )}
 
-            {plan && <PlanTodoView content={plan.content} />}
+            {plan && (
+                <PlanTodoView content={plan.content} isClosed={plan.isClosed} />
+            )}
 
             {mainContent && (
                 <div className="text-sm leading-relaxed text-foreground/90 font-medium relative [&_p]:mb-6 last:[&_p]:mb-0 break-all w-full min-w-0">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={MarkdownComponents}>{mainContent}</ReactMarkdown>
-                    {isStreaming && !mainContent.endsWith(".") && <span className="inline-flex gap-1 ml-1 animate-pulse text-primary font-black">_</span>}
+                    <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={MarkdownComponents}
+                    >
+                        {mainContent}
+                    </ReactMarkdown>
                 </div>
             )}
 
             {isLatest && isLoading && msg.status && (
                 <div className="flex items-center gap-2 px-2 py-1.5 bg-primary/5 border border-primary/10 rounded-lg w-fit animate-in fade-in zoom-in-95 mt-2">
                     <Zap size={10} className="text-primary animate-pulse" />
-                    <span className="text-[10px] font-bold text-primary/70 uppercase tracking-wider">{msg.status}</span>
+                    <span className="text-[10px] font-bold text-primary/70 uppercase tracking-wider">
+                        {msg.status}
+                    </span>
                 </div>
             )}
         </div>
@@ -469,7 +554,9 @@ interface Report {
 
 export default function ExecutionConsole() {
     const [agents, setAgents] = useState<Agent[]>([]);
-    const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+    const [currentSessionId, setCurrentSessionId] = useState<string | null>(
+        null
+    );
     const [messages, setMessages] = useState<Message[]>([]);
     const [inputValue, setInputValue] = useState("");
     const [isLoading, setIsLoading] = useState(false);
@@ -486,7 +573,7 @@ export default function ExecutionConsole() {
     const [isAtBottom, setIsAtBottom] = useState(true);
     const [showScrollButton, setShowScrollButton] = useState(false);
     const [hasNewMessages, setHasNewMessages] = useState(false);
-    
+
     const scrollRef = useRef<HTMLDivElement>(null);
     const viewportRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -508,25 +595,38 @@ export default function ExecutionConsole() {
                         const { sender, subject, content } = msgData;
 
                         if (subject === "task_stream_chunk") {
-                            const agent = agentsRef.current.find((a) => a.identifier === sender);
+                            const agent = agentsRef.current.find(
+                                (a) => a.identifier === sender
+                            );
                             const messageId = `stream_${sender}`;
 
                             setMessages((prev) => {
-                                const existing = prev.find((m) => m.id === messageId);
+                                const existing = prev.find(
+                                    (m) => m.id === messageId
+                                );
                                 if (existing) {
                                     return prev.map((m) =>
-                                        m.id === messageId ? { ...m, content: content.full_content_so_far } : m
+                                        m.id === messageId
+                                            ? {
+                                                  ...m,
+                                                  content:
+                                                      content.full_content_so_far,
+                                              }
+                                            : m
                                     );
                                 } else {
-                                    return [...prev, {
-                                        id: messageId,
-                                        role: "assistant",
-                                        content: content.chunk,
-                                        agent_id: sender,
-                                        agent_name: agent?.name || sender,
-                                        agent_avatar: agent?.avatar || "",
-                                        timestamp: Date.now(),
-                                    }];
+                                    return [
+                                        ...prev,
+                                        {
+                                            id: messageId,
+                                            role: "assistant",
+                                            content: content.chunk,
+                                            agent_id: sender,
+                                            agent_name: agent?.name || sender,
+                                            agent_avatar: agent?.avatar || "",
+                                            timestamp: Date.now(),
+                                        },
+                                    ];
                                 }
                             });
                         }
@@ -552,7 +652,10 @@ export default function ExecutionConsole() {
         if (viewportRef.current) {
             isProgrammaticScroll.current = true;
             setShowScrollButton(false);
-            viewportRef.current.scrollTo({ top: viewportRef.current.scrollHeight, behavior });
+            viewportRef.current.scrollTo({
+                top: viewportRef.current.scrollHeight,
+                behavior,
+            });
             setTimeout(() => {
                 isProgrammaticScroll.current = false;
                 setIsAtBottom(true);
@@ -564,7 +667,8 @@ export default function ExecutionConsole() {
     const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
         if (isProgrammaticScroll.current) return;
         const target = e.currentTarget;
-        const distanceToBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
+        const distanceToBottom =
+            target.scrollHeight - target.scrollTop - target.clientHeight;
         const atBottom = distanceToBottom < 20;
         setIsAtBottom(atBottom);
         setShowScrollButton(distanceToBottom > 100);
@@ -601,7 +705,9 @@ export default function ExecutionConsole() {
     useEffect(() => {
         const fetchAgents = async () => {
             try {
-                const response = await fetch("http://localhost:8000/api/agents");
+                const response = await fetch(
+                    "http://localhost:8000/api/agents"
+                );
                 if (!response.ok) throw new Error("无法获取智能体列表");
                 const data = await response.json();
                 if (data) {
@@ -609,7 +715,9 @@ export default function ExecutionConsole() {
                     agentsRef.current = data;
                     setTimeout(() => textareaRef.current?.focus(), 100);
                 }
-            } catch (err) { console.error("Fetch agents error:", err); }
+            } catch (err) {
+                console.error("Fetch agents error:", err);
+            }
         };
         fetchAgents();
     }, []);
@@ -618,14 +726,30 @@ export default function ExecutionConsole() {
         if (!inputValue.trim() || isLoading) return;
         let sessionId = currentSessionId;
         if (!sessionId) {
-            const { data } = await supabase.from("chat_sessions").insert([{ title: "新会话" }]).select().single();
-            if (data) { sessionId = data.id; setCurrentSessionId(sessionId); }
+            const { data } = await supabase
+                .from("chat_sessions")
+                .insert([{ title: "新会话" }])
+                .select()
+                .single();
+            if (data) {
+                sessionId = data.id;
+                setCurrentSessionId(sessionId);
+            }
         }
-        const mentionedAgent = agents.find((a) => inputValue.includes(`@${a.name}`));
-        const targetAgent = mentionedAgent || agents.find((a) => a.identifier === "primary_agent");
+        const mentionedAgent = agents.find((a) =>
+            inputValue.includes(`@${a.name}`)
+        );
+        const targetAgent =
+            mentionedAgent ||
+            agents.find((a) => a.identifier === "primary_agent");
         if (!targetAgent) return;
 
-        const userMsg: Message = { id: Date.now().toString(), role: "user", content: inputValue, timestamp: Date.now() };
+        const userMsg: Message = {
+            id: Date.now().toString(),
+            role: "user",
+            content: inputValue,
+            timestamp: Date.now(),
+        };
         const isFirstMessage = messages.length === 0;
         setMessages((prev) => [...prev, userMsg]);
         setInputValue("");
@@ -635,14 +759,44 @@ export default function ExecutionConsole() {
         const assistantId = (Date.now() + 1).toString();
         try {
             if (isFirstMessage) {
-                fetch("http://localhost:8000/api/chat/summarize", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: userMsg.content }) })
-                    .then(res => res.json()).then(async data => { if (data.title && sessionId) { setSessionTitle(data.title); await supabase.from("chat_sessions").update({ title: data.title }).eq("id", sessionId); } });
+                fetch("http://localhost:8000/api/chat/summarize", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ content: userMsg.content }),
+                })
+                    .then((res) => res.json())
+                    .then(async (data) => {
+                        if (data.title && sessionId) {
+                            setSessionTitle(data.title);
+                            await supabase
+                                .from("chat_sessions")
+                                .update({ title: data.title })
+                                .eq("id", sessionId);
+                        }
+                    });
             }
 
-            const assistantMsg: Message = { id: assistantId, role: "assistant", content: "", agent_name: targetAgent.name, agent_avatar: targetAgent.avatar, timestamp: Date.now() };
+            const assistantMsg: Message = {
+                id: assistantId,
+                role: "assistant",
+                content: "",
+                agent_name: targetAgent.name,
+                agent_avatar: targetAgent.avatar,
+                timestamp: Date.now(),
+            };
             setMessages((prev) => [...prev, assistantMsg]);
 
-            const response = await fetch("http://localhost:8000/api/chat/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agent_id: targetAgent.identifier, content: userMsg.content }) });
+            const response = await fetch(
+                "http://localhost:8000/api/chat/stream",
+                {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        agent_id: targetAgent.identifier,
+                        content: userMsg.content,
+                    }),
+                }
+            );
             if (!response.ok) throw new Error("网络请求失败");
             const reader = response.body?.getReader();
             if (!reader) throw new Error("流读取器不可用");
@@ -664,25 +818,83 @@ export default function ExecutionConsole() {
                     try {
                         const event = JSON.parse(line);
                         if (event.type === "stream") {
-                            if (event.agent_id && event.agent_id !== lastAgentId) {
+                            if (
+                                event.agent_id &&
+                                event.agent_id !== lastAgentId
+                            ) {
                                 lastAgentId = event.agent_id;
-                                currentAssistantId = (Date.now() + Math.random()).toString();
-                                const newAgent = agentsRef.current.find(a => a.identifier === event.agent_id);
-                                setMessages(prev => [...prev, { id: currentAssistantId, role: "assistant", content: event.content, agent_id: event.agent_id, agent_name: newAgent?.name || event.agent_id, agent_avatar: newAgent?.avatar || "", timestamp: Date.now() }]);
+                                currentAssistantId = (
+                                    Date.now() + Math.random()
+                                ).toString();
+                                const newAgent = agentsRef.current.find(
+                                    (a) => a.identifier === event.agent_id
+                                );
+                                setMessages((prev) => [
+                                    ...prev,
+                                    {
+                                        id: currentAssistantId,
+                                        role: "assistant",
+                                        content: event.content,
+                                        agent_id: event.agent_id,
+                                        agent_name:
+                                            newAgent?.name || event.agent_id,
+                                        agent_avatar: newAgent?.avatar || "",
+                                        timestamp: Date.now(),
+                                    },
+                                ]);
                             } else {
-                                setMessages(prev => prev.map(msg => msg.id === currentAssistantId ? { ...msg, content: (msg.content || "") + event.content } : msg));
+                                setMessages((prev) =>
+                                    prev.map((msg) =>
+                                        msg.id === currentAssistantId
+                                            ? {
+                                                  ...msg,
+                                                  content:
+                                                      (msg.content || "") +
+                                                      event.content,
+                                              }
+                                            : msg
+                                    )
+                                );
                             }
                         } else if (event.type === "status") {
-                            setMessages(prev => prev.map(msg => msg.id === currentAssistantId ? { ...msg, status: event.content } : msg));
+                            setMessages((prev) =>
+                                prev.map((msg) =>
+                                    msg.id === currentAssistantId
+                                        ? { ...msg, status: event.content }
+                                        : msg
+                                )
+                            );
                         } else if (event.type === "error") {
-                            setMessages(prev => [...prev, { id: Date.now().toString(), role: "assistant", content: `\n\n[ERROR]: ${event.content}\n`, agent_name: "System", timestamp: Date.now() }]);
+                            setMessages((prev) => {
+                                const lastMsg = prev[prev.length - 1];
+                                if (lastMsg && lastMsg.role === "assistant") {
+                                    return prev.map(msg => 
+                                        msg.id === lastMsg.id 
+                                            ? { ...msg, content: (msg.content || "") + `\n\n**[系统异常]** ${event.content}\n` } 
+                                            : msg
+                                    );
+                                }
+                                return prev;
+                            });
                         }
                     } catch (e) {}
                 }
             }
-            setActiveReport({ title: "全域策略执行报告", product: "智能决策输出", status: "Completed", timestamp: new Date().toLocaleTimeString(), details: "分析已完成。" });
+            setActiveReport({
+                title: "全域策略执行报告",
+                product: "智能决策输出",
+                status: "Completed",
+                timestamp: new Date().toLocaleTimeString(),
+                details: "分析已完成。",
+            });
         } catch (error) {
-            setMessages(prev => prev.map(msg => msg.id === assistantId ? { ...msg, content: "系统异常，请稍后再试。" } : msg));
+            setMessages((prev) =>
+                prev.map((msg) =>
+                    msg.id === assistantId
+                        ? { ...msg, content: "系统异常，请稍后再试。" }
+                        : msg
+                )
+            );
         } finally {
             setIsLoading(false);
             setTimeout(() => textareaRef.current?.focus(), 0);
@@ -691,40 +903,170 @@ export default function ExecutionConsole() {
 
     return (
         <div className="flex h-screen bg-background text-foreground overflow-hidden font-sans relative">
-            <aside className={`flex flex-col z-50 shrink-0 transition-all duration-300 ease-in-out bg-sidebar relative ${isSidebarOpen ? "w-[240px] border-r border-sidebar-border/40" : "w-0 border-none"}`}>
+            <aside
+                className={`flex flex-col z-50 shrink-0 transition-all duration-300 ease-in-out bg-sidebar relative ${
+                    isSidebarOpen
+                        ? "w-[240px] border-r border-sidebar-border/40"
+                        : "w-0 border-none"
+                }`}
+            >
                 <div className="w-[240px] flex flex-col h-full">
                     <header className="h-12 flex items-center justify-between px-4 shrink-0">
-                        <div className="flex items-center gap-2"><div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center text-primary-foreground font-black text-xl">A</div><span className="font-black text-sm uppercase">Autonomy</span></div>
-                        <Button variant="ghost" size="icon" onClick={() => setIsSidebarOpen(false)} className="h-8 w-8"><PanelLeft size={16} /></Button>
+                        <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center text-primary-foreground font-black text-xl">
+                                A
+                            </div>
+                            <span className="font-black text-sm uppercase">
+                                Autonomy
+                            </span>
+                        </div>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setIsSidebarOpen(false)}
+                            className="h-8 w-8"
+                        >
+                            <PanelLeft size={16} />
+                        </Button>
                     </header>
                     <div className="p-4 flex-1 flex flex-col overflow-hidden">
-                        <Button onClick={() => { setMessages([]); setCurrentSessionId(null); setSessionTitle("新会话"); }} className="w-full justify-start gap-3 bg-primary/10 text-primary rounded-xl h-11 text-xs font-bold transition-all"><Plus size={18} />开启新会话</Button>
-                        <ScrollArea className="flex-1 mt-4"><div className="space-y-1.5"><div className="px-4 py-2 text-[10px] font-black opacity-30 uppercase tracking-widest">最近会话</div><button className="w-full text-left p-3.5 rounded-xl bg-primary/10 text-primary flex items-center gap-3"><MessageSquare size={14} /><div className="truncate flex-1 text-xs font-semibold">{sessionTitle}</div></button></div></ScrollArea>
+                        <Button
+                            onClick={() => {
+                                setMessages([]);
+                                setCurrentSessionId(null);
+                                setSessionTitle("新会话");
+                            }}
+                            className="w-full justify-start gap-3 bg-primary/10 text-primary rounded-xl h-11 text-xs font-bold transition-all"
+                        >
+                            <Plus size={18} />
+                            开启新会话
+                        </Button>
+                        <ScrollArea className="flex-1 mt-4">
+                            <div className="space-y-1.5">
+                                <div className="px-4 py-2 text-[10px] font-black opacity-30 uppercase tracking-widest">
+                                    最近会话
+                                </div>
+                                <button className="w-full text-left p-3.5 rounded-xl bg-primary/10 text-primary flex items-center gap-3">
+                                    <MessageSquare size={14} />
+                                    <div className="truncate flex-1 text-xs font-semibold">
+                                        {sessionTitle}
+                                    </div>
+                                </button>
+                            </div>
+                        </ScrollArea>
                     </div>
                 </div>
             </aside>
 
-            <section style={{ width: isFlowOpen ? `${flowWidth}px` : "0px" }} className={`flex flex-col z-40 shrink-0 bg-background relative h-full overflow-hidden ${isFlowOpen ? "border-r border-border/40" : ""}`}>
-                {isFlowOpen && <div className="absolute -right-1 top-0 w-2 h-full cursor-col-resize z-50 hover:bg-primary/30" onMouseDown={handleMouseDown} />}
+            <section
+                style={{ width: isFlowOpen ? `${flowWidth}px` : "0px" }}
+                className={`flex flex-col z-40 shrink-0 bg-background relative h-full overflow-hidden ${
+                    isFlowOpen ? "border-r border-border/40" : ""
+                }`}
+            >
+                {isFlowOpen && (
+                    <div
+                        className="absolute -right-1 top-0 w-2 h-full cursor-col-resize z-50 hover:bg-primary/30"
+                        onMouseDown={handleMouseDown}
+                    />
+                )}
                 <header className="h-12 border-b border-border/40 flex items-center justify-between px-4 shrink-0 bg-background/50 backdrop-blur-md">
-                    <div className="flex items-center gap-2">{!isSidebarOpen && <Button variant="ghost" size="icon" onClick={() => setIsSidebarOpen(true)} className="h-8 w-8"><PanelLeft size={16} className="rotate-180" /></Button>}<input value={sessionTitle} onChange={(e) => setSessionTitle(e.target.value)} className="bg-transparent border-none text-[13px] font-bold outline-none flex-1" placeholder="输入标题..." /></div>
-                    <Button variant="ghost" size="icon" onClick={() => setIsFlowOpen(false)} className="h-8 w-8"><PanelLeft size={16} /></Button>
+                    <div className="flex items-center gap-2">
+                        {!isSidebarOpen && (
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => setIsSidebarOpen(true)}
+                                className="h-8 w-8"
+                            >
+                                <PanelLeft size={16} className="rotate-180" />
+                            </Button>
+                        )}
+                        <input
+                            value={sessionTitle}
+                            onChange={(e) => setSessionTitle(e.target.value)}
+                            className="bg-transparent border-none text-[13px] font-bold outline-none flex-1"
+                            placeholder="输入标题..."
+                        />
+                    </div>
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setIsFlowOpen(false)}
+                        className="h-8 w-8"
+                    >
+                        <PanelLeft size={16} />
+                    </Button>
                 </header>
 
-                <div className="flex-1 min-h-0 relative flex flex-col bg-muted/5" onMouseEnter={() => setIsHovering(true)} onMouseLeave={() => setIsHovering(false)}>
-                    <ScrollArea className="flex-1 h-0" viewportRef={viewportRef} onScroll={handleScroll}>
+                <div
+                    className="flex-1 min-h-0 relative flex flex-col bg-muted/5"
+                    onMouseEnter={() => setIsHovering(true)}
+                    onMouseLeave={() => setIsHovering(false)}
+                >
+                    <ScrollArea
+                        className="flex-1 h-0"
+                        viewportRef={viewportRef}
+                        onScroll={handleScroll}
+                    >
                         <div className="p-6 space-y-8 pb-12">
-                            {messages.length === 0 && <div className="space-y-4"><div className="flex items-center gap-3 text-primary"><Sparkles size={20} /><h3 className="text-sm font-bold uppercase">就绪</h3></div><p className="text-xs font-medium text-muted-foreground">请输入指令启动策略分析。</p></div>}
+                            {messages.length === 0 && (
+                                <div className="space-y-4">
+                                    <div className="flex items-center gap-3 text-primary">
+                                        <Sparkles size={20} />
+                                        <h3 className="text-sm font-bold uppercase">
+                                            就绪
+                                        </h3>
+                                    </div>
+                                    <p className="text-xs font-medium text-muted-foreground">
+                                        请输入指令启动策略分析。
+                                    </p>
+                                </div>
+                            )}
                             {messages.map((msg, index) => (
-                                <div key={msg.id}>{msg.role === "assistant" ? <AssistantMessageItem msg={msg} isLatest={index === messages.length - 1} isLoading={isLoading} /> : <div className="flex flex-col items-end space-y-1.5"><span className="text-[10px] font-black text-primary/40 uppercase">You</span><div className="bg-primary/5 border border-primary/20 p-4 rounded-2xl rounded-tr-none text-sm font-semibold max-w-[90%] text-primary">{msg.content}</div></div>}</div>
+                                <div key={msg.id}>
+                                    {msg.role === "assistant" ? (
+                                        <AssistantMessageItem
+                                            msg={msg}
+                                            isLatest={
+                                                index === messages.length - 1
+                                            }
+                                            isLoading={isLoading}
+                                        />
+                                    ) : (
+                                        <div className="flex flex-col items-end space-y-1.5">
+                                            <span className="text-[10px] font-black text-primary/40 uppercase">
+                                                You
+                                            </span>
+                                            <div className="bg-primary/5 border border-primary/20 p-4 rounded-2xl rounded-tr-none text-sm font-semibold max-w-[90%] text-primary">
+                                                {msg.content}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
                             ))}
                         </div>
                     </ScrollArea>
                     {showScrollButton && (
                         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50">
-                            <Button size="sm" onClick={() => scrollToBottom("smooth")} className="rounded-full shadow-lg bg-primary text-primary-foreground text-[10px] font-bold gap-2 h-9 px-4">
-                                {hasNewMessages ? <Sparkles size={14} className="fill-current" /> : <ChevronDown size={14} />}
-                                <span>{hasNewMessages ? "查看新消息" : "回到最底部"}</span>
+                            <Button
+                                size="sm"
+                                onClick={() => scrollToBottom("smooth")}
+                                className="rounded-full shadow-lg bg-primary text-primary-foreground text-[10px] font-bold gap-2 h-9 px-4"
+                            >
+                                {hasNewMessages ? (
+                                    <Sparkles
+                                        size={14}
+                                        className="fill-current"
+                                    />
+                                ) : (
+                                    <ChevronDown size={14} />
+                                )}
+                                <span>
+                                    {hasNewMessages
+                                        ? "查看新消息"
+                                        : "回到最底部"}
+                                </span>
                             </Button>
                         </div>
                     )}
@@ -733,35 +1075,194 @@ export default function ExecutionConsole() {
                 <div className="p-6 bg-background relative">
                     {showAgentMenu && (
                         <Card className="absolute bottom-full left-6 w-56 bg-popover border shadow-2xl p-1 z-50 rounded-xl mb-2">
-                            {agents.filter(a => a.name.toLowerCase().includes(mentionQuery.toLowerCase())).map((agent, index) => (
-                                <button key={agent.id} onClick={() => { setInputValue(inputValue.substring(0, inputValue.lastIndexOf("@")) + "@" + agent.name + " "); setShowAgentMenu(false); }} className={`w-full flex items-center gap-2.5 p-1.5 rounded-lg text-left ${index === selectedIndex ? "bg-primary/20" : "hover:bg-primary/10"}`}>
-                                    <div className="w-6 h-6 rounded-md overflow-hidden bg-muted"><img src={agent.avatar} className="w-full h-full object-cover" /></div>
-                                    <div className="flex flex-col min-w-0"><span className="text-[11px] font-bold truncate">{agent.name}</span><span className="text-[9px] text-muted-foreground truncate">{agent.role}</span></div>
-                                </button>
-                            ))}
+                            {agents
+                                .filter((a) =>
+                                    a.name
+                                        .toLowerCase()
+                                        .includes(mentionQuery.toLowerCase())
+                                )
+                                .map((agent, index) => (
+                                    <button
+                                        key={agent.id}
+                                        onClick={() => {
+                                            setInputValue(
+                                                inputValue.substring(
+                                                    0,
+                                                    inputValue.lastIndexOf("@")
+                                                ) +
+                                                    "@" +
+                                                    agent.name +
+                                                    " "
+                                            );
+                                            setShowAgentMenu(false);
+                                        }}
+                                        className={`w-full flex items-center gap-2.5 p-1.5 rounded-lg text-left ${
+                                            index === selectedIndex
+                                                ? "bg-primary/20"
+                                                : "hover:bg-primary/10"
+                                        }`}
+                                    >
+                                        <div className="w-6 h-6 rounded-md overflow-hidden bg-muted">
+                                            <img
+                                                src={agent.avatar}
+                                                className="w-full h-full object-cover"
+                                            />
+                                        </div>
+                                        <div className="flex flex-col min-w-0">
+                                            <span className="text-[11px] font-bold truncate">
+                                                {agent.name}
+                                            </span>
+                                            <span className="text-[9px] text-muted-foreground truncate">
+                                                {agent.role}
+                                            </span>
+                                        </div>
+                                    </button>
+                                ))}
                         </Card>
                     )}
                     <Card className="bg-background/50 border-border/40 p-1.5 flex flex-col gap-1 rounded-xl">
-                        <textarea ref={textareaRef} value={inputValue} onChange={(e) => { setInputValue(e.target.value); const lastAt = e.target.value.lastIndexOf("@"); if (lastAt !== -1 && (lastAt === 0 || e.target.value[lastAt-1] === " ")) { setShowAgentMenu(true); setMentionQuery(e.target.value.substring(lastAt+1)); } else { setShowAgentMenu(false); } }} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }} placeholder="输入指令或使用 @ 呼叫智能体..." className="w-full bg-transparent border-none p-3 text-sm font-medium resize-none min-h-[90px] outline-none" />
-                        <div className="flex items-center justify-between px-2 pb-1.5"><div className="flex items-center gap-1"><Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground"><Paperclip size={16} /></Button><Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" onClick={() => setShowAgentMenu(!showAgentMenu)}><AtSign size={16} /></Button></div><Button size="icon" disabled={!inputValue.trim() || isLoading} onClick={handleSend} className="h-9 w-9 rounded-full bg-primary text-primary-foreground">{isLoading ? <StopCircle size={16} className="animate-spin" /> : <Send size={16} />}</Button></div>
+                        <textarea
+                            ref={textareaRef}
+                            value={inputValue}
+                            onChange={(e) => {
+                                setInputValue(e.target.value);
+                                const lastAt = e.target.value.lastIndexOf("@");
+                                if (
+                                    lastAt !== -1 &&
+                                    (lastAt === 0 ||
+                                        e.target.value[lastAt - 1] === " ")
+                                ) {
+                                    setShowAgentMenu(true);
+                                    setMentionQuery(
+                                        e.target.value.substring(lastAt + 1)
+                                    );
+                                } else {
+                                    setShowAgentMenu(false);
+                                }
+                            }}
+                            onKeyDown={(e) => {
+                                if (e.key === "Enter" && !e.shiftKey) {
+                                    e.preventDefault();
+                                    handleSend();
+                                }
+                            }}
+                            placeholder="输入指令或使用 @ 呼叫智能体..."
+                            className="w-full bg-transparent border-none p-3 text-sm font-medium resize-none min-h-[90px] outline-none"
+                        />
+                        <div className="flex items-center justify-between px-2 pb-1.5">
+                            <div className="flex items-center gap-1">
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-muted-foreground"
+                                >
+                                    <Paperclip size={16} />
+                                </Button>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-muted-foreground"
+                                    onClick={() =>
+                                        setShowAgentMenu(!showAgentMenu)
+                                    }
+                                >
+                                    <AtSign size={16} />
+                                </Button>
+                            </div>
+                            <Button
+                                size="icon"
+                                disabled={!inputValue.trim() || isLoading}
+                                onClick={handleSend}
+                                className="h-9 w-9 rounded-full bg-primary text-primary-foreground"
+                            >
+                                {isLoading ? (
+                                    <StopCircle
+                                        size={16}
+                                        className="animate-spin"
+                                    />
+                                ) : (
+                                    <Send size={16} />
+                                )}
+                            </Button>
+                        </div>
                     </Card>
                 </div>
             </section>
 
             <div className="flex-1 flex flex-col min-w-0 bg-background relative h-full">
                 <header className="h-12 border-b border-border/40 flex items-center justify-between px-6 shrink-0 sticky top-0 z-20 bg-background">
-                    <div className="flex items-center gap-4">{!isFlowOpen && <Button variant="ghost" size="icon" onClick={() => setIsFlowOpen(true)} className="h-8 w-8"><PanelLeft size={16} className="rotate-180" /></Button>}<div className="text-[11px] font-bold uppercase opacity-50">控制台 / 执行面板</div></div>
-                    <div className="flex -space-x-2"><TooltipProvider>{agents.map(a => <Tooltip key={a.id}><TooltipTrigger asChild><Avatar className="w-7 h-7 border-2 border-background ring-1 ring-border/50"><AvatarImage src={a.avatar} /><AvatarFallback className="text-[10px]">{a.name.charAt(0)}</AvatarFallback></Avatar></TooltipTrigger><TooltipContent side="bottom" className="text-xs font-bold p-2">{a.name} - {a.role}</TooltipContent></Tooltip>)}</TooltipProvider></div>
+                    <div className="flex items-center gap-4">
+                        {!isFlowOpen && (
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => setIsFlowOpen(true)}
+                                className="h-8 w-8"
+                            >
+                                <PanelLeft size={16} className="rotate-180" />
+                            </Button>
+                        )}
+                        <div className="text-[11px] font-bold uppercase opacity-50">
+                            控制台 / 执行面板
+                        </div>
+                    </div>
+                    <div className="flex -space-x-2">
+                        <TooltipProvider>
+                            {agents.map((a) => (
+                                <Tooltip key={a.id}>
+                                    <TooltipTrigger asChild>
+                                        <Avatar className="w-7 h-7 border-2 border-background ring-1 ring-border/50">
+                                            <AvatarImage src={a.avatar} />
+                                            <AvatarFallback className="text-[10px]">
+                                                {a.name.charAt(0)}
+                                            </AvatarFallback>
+                                        </Avatar>
+                                    </TooltipTrigger>
+                                    <TooltipContent
+                                        side="bottom"
+                                        className="text-xs font-bold p-2"
+                                    >
+                                        {a.name} - {a.role}
+                                    </TooltipContent>
+                                </Tooltip>
+                            ))}
+                        </TooltipProvider>
+                    </div>
                 </header>
                 <main className="flex-1 p-6 relative overflow-hidden">
                     <div className="h-full bg-card rounded-2xl border border-border/40 relative overflow-hidden flex flex-col">
                         {activeReport ? (
-                            <ScrollArea className="flex-1 p-8"><div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-                                <div className="border-b pb-6"><Badge className="bg-primary/10 text-primary mb-4">{activeReport.status}</Badge><h2 className="text-4xl font-black italic tracking-tighter">{activeReport.title}</h2></div>
-                                <Card className="p-8 space-y-6"><div className="flex items-center gap-3"><div className="w-2 h-5 bg-primary rounded-full" /><h4 className="text-xs font-black uppercase tracking-widest">策略分析摘要</h4></div><p className="text-sm leading-relaxed text-muted-foreground font-medium bg-muted/10 p-6 rounded-xl border-dashed border">{activeReport.details} 本次分析已同步检索实时波动数据。</p></Card>
-                            </div></ScrollArea>
+                            <ScrollArea className="flex-1 p-8">
+                                <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                                    <div className="border-b pb-6">
+                                        <Badge className="bg-primary/10 text-primary mb-4">
+                                            {activeReport.status}
+                                        </Badge>
+                                        <h2 className="text-4xl font-black italic tracking-tighter">
+                                            {activeReport.title}
+                                        </h2>
+                                    </div>
+                                    <Card className="p-8 space-y-6">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-2 h-5 bg-primary rounded-full" />
+                                            <h4 className="text-xs font-black uppercase tracking-widest">
+                                                策略分析摘要
+                                            </h4>
+                                        </div>
+                                        <p className="text-sm leading-relaxed text-muted-foreground font-medium bg-muted/10 p-6 rounded-xl border-dashed border">
+                                            {activeReport.details}{" "}
+                                            本次分析已同步检索实时波动数据。
+                                        </p>
+                                    </Card>
+                                </div>
+                            </ScrollArea>
                         ) : (
-                            <div className="flex-1 flex flex-col items-center justify-center opacity-20 grayscale"><Zap size={64} className="animate-pulse" /><h3 className="text-2xl font-black uppercase tracking-widest mt-4">准备就绪</h3></div>
+                            <div className="flex-1 flex flex-col items-center justify-center opacity-20 grayscale">
+                                <Zap size={64} className="animate-pulse" />
+                                <h3 className="text-2xl font-black uppercase tracking-widest mt-4">
+                                    准备就绪
+                                </h3>
+                            </div>
                         )}
                     </div>
                 </main>

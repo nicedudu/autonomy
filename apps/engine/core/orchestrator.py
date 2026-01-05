@@ -58,18 +58,31 @@ class Orchestrator:
 
                 print(f"[Orchestrator] 调度激活 -> {runtime.name} ({current_agent_id})")
 
-                # 执行当前节点的推理循环
+                # 判定当前是否为入口节点（负责与用户直接对话）
+                is_entry_agent = current_agent_id == entry_agent_id
+                
                 last_response = ""
                 async for chunk in runtime.execute_async(
                     current_input, 
                     team_roster=team_roster, 
                     global_facts=global_facts
                 ):
+                    # 注意：runtime.execute_async 内部已经包含了 print(chunk) 逻辑
                     if chunk["type"] == "stream":
-                        last_response += chunk["content"]
-                    yield chunk
+                        content = chunk["content"]
+                        last_response += content
+                        
+                        # 仅对前端推送逻辑进行过滤，控制台打印由 executor.py 内部处理
+                        if is_entry_agent:
+                            yield chunk
+                        else:
+                            # 专家节点运行时，仅透传状态标签以保持前端进度感
+                            if "<status>" in content or "<plan>" in content:
+                                yield chunk
+                    else:
+                        yield chunk
 
-                # 解析跨节点协作请求 (<call> 协议)
+                # 解析跨节点协作请求
                 call_match = re.search(r"<call>(.*?)<\/call>", last_response, re.DOTALL)
                 if call_match:
                     try:
