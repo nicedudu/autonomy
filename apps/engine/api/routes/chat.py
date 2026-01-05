@@ -2,12 +2,9 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from typing import Any, Dict
 import json
-from core.orchestrator import Orchestrator
+from api.deps import orchestrator
 
 router = APIRouter(prefix="/api/chat", tags=["Chat"])
-
-# 复用全局编排器
-orchestrator = Orchestrator()
 
 @router.post("/summarize")
 async def summarize_chat(request: Dict[str, Any]):

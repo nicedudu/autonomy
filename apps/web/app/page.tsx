@@ -493,6 +493,61 @@ export default function ExecutionConsole() {
     const isProgrammaticScroll = useRef(false);
     const agentsRef = useRef<Agent[]>([]);
 
+    useEffect(() => {
+        let ws: WebSocket | null = null;
+        let reconnectTimeout: NodeJS.Timeout;
+
+        const connect = () => {
+            ws = new WebSocket("ws://localhost:8000/ws/ops");
+
+            ws.onmessage = (event) => {
+                try {
+                    const payload = JSON.parse(event.data);
+                    if (payload.type === "agent_message") {
+                        const msgData = payload.data;
+                        const { sender, subject, content } = msgData;
+
+                        if (subject === "task_stream_chunk") {
+                            const agent = agentsRef.current.find((a) => a.identifier === sender);
+                            const messageId = `stream_${sender}`;
+
+                            setMessages((prev) => {
+                                const existing = prev.find((m) => m.id === messageId);
+                                if (existing) {
+                                    return prev.map((m) =>
+                                        m.id === messageId ? { ...m, content: content.full_content_so_far } : m
+                                    );
+                                } else {
+                                    return [...prev, {
+                                        id: messageId,
+                                        role: "assistant",
+                                        content: content.chunk,
+                                        agent_id: sender,
+                                        agent_name: agent?.name || sender,
+                                        agent_avatar: agent?.avatar || "",
+                                        timestamp: Date.now(),
+                                    }];
+                                }
+                            });
+                        }
+                    }
+                } catch (e) {
+                    console.error("WS error:", e);
+                }
+            };
+
+            ws.onclose = () => {
+                reconnectTimeout = setTimeout(connect, 3000);
+            };
+        };
+
+        connect();
+        return () => {
+            if (ws) ws.close();
+            clearTimeout(reconnectTimeout);
+        };
+    }, []);
+
     const scrollToBottom = (behavior: ScrollBehavior = "smooth") => {
         if (viewportRef.current) {
             isProgrammaticScroll.current = true;

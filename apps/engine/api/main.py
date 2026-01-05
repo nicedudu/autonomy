@@ -1,15 +1,40 @@
 import asyncio
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from api.routes import agent, chat
 from api.utils import manager, emit_event
+from api.deps import orchestrator
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    管理应用程序的生命周期。
+    负责在启动时初始化全局回调，并在关闭时清理资源。
+    """
+    # --- 启动逻辑 ---
+    def bus_to_ui_callback(message):
+        """将内部总线消息实时转发至 WebSocket 发送队列。"""
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.create_task(emit_event("agent_message", message.model_dump()))
+        except Exception:
+            pass
+
+    # 绑定回调
+    orchestrator.bus.set_on_message_callback(bus_to_ui_callback)
+    
+    yield
+    
+    # --- 关闭逻辑 ---
+    orchestrator.bus.set_on_message_callback(None)
 
 def create_app() -> FastAPI:
     """
     初始化并配置 FastAPI 应用程序。
-    包含中间件、路由挂载以及事件总线回调的绑定。
     """
-    app = FastAPI(title="Autonomy Engine API", version="4.0.0")
+    app = FastAPI(title="Autonomy Engine API", version="4.0.0", lifespan=lifespan)
 
     # 配置跨域资源共享
     app.add_middleware(
@@ -23,25 +48,12 @@ def create_app() -> FastAPI:
     app.include_router(agent.router)
     app.include_router(chat.router)
 
-    # 绑定总线回调：将系统内部消息实时转发至 UI
-    def bus_to_ui_callback(message):
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                asyncio.create_task(emit_event("agent_message", message.model_dump()))
-        except Exception:
-            pass
-
-    # 注入回调到全局编排器（从 chat 模块复用实例）
-    chat.orchestrator.bus.set_on_message_callback(bus_to_ui_callback)
-
     @app.websocket("/ws/ops")
     async def websocket_endpoint(websocket: WebSocket):
         """实时运维 WebSocket 入口。"""
         await manager.connect(websocket)
         try:
             while True:
-                # 维持连接，接受心跳
                 await websocket.receive_text()
         except WebSocketDisconnect:
             manager.disconnect(websocket)
