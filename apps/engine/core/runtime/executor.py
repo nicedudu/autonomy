@@ -138,10 +138,11 @@ class AgentRuntime:
                             await mw.on_after_action(self.agent_id, action, result)
                         
                         # 观测结果反馈
+                        from prompts.runtime import get_observation_success_prompt, get_observation_failed_prompt
                         if result.status == Status.SUCCESS:
-                            current_prompt = f"\n[观测结果 - 成功]\n工具 '{action.tool_name}' 执行完毕。\n输出摘要: {str(result.output)[:5000]}"
+                            current_prompt = get_observation_success_prompt(action.tool_name, result.output)
                         else:
-                            current_prompt = f"\n[观测结果 - 失败]\n错误详情: {result.error}"
+                            current_prompt = get_observation_failed_prompt(action.tool_name, result.error)
                         continue
                     except Exception as e:
                         current_prompt = f"\n[错误] 执行异常: {str(e)}"
@@ -150,7 +151,13 @@ class AgentRuntime:
 
             # 轮次耗尽处理
             if turn >= max_turns:
-                yield {"type": "stream", "agent_id": self.agent_id, "content": "\n\n⚠️ 达到轮次上限，自动结束。"}
+                from prompts.runtime import get_max_turns_reached_prompt, get_final_summary_instruction
+                yield {"type": "stream", "agent_id": self.agent_id, "content": get_max_turns_reached_prompt()}
+                
+                # 发起最后一轮总结
+                messages = [{"role": "system", "content": self.system_prompt}, {"role": "user", "content": get_final_summary_instruction()}]
+                async for chunk in self.llm_factory.call_llm_stream_async(self.agent_id, messages):
+                    yield {"type": "stream", "agent_id": self.agent_id, "content": chunk}
 
         except Exception as e:
             is_rate_limit = "429" in str(e)

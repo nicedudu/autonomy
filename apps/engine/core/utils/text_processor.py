@@ -143,10 +143,10 @@ class TextProcessor:
         # 执行 Reduce 阶段
         print(f"  [TextProcessor] 正在执行摘要聚合 (Reduce)...")
         combined = "\n\n".join(valid_intermediates)
-        prompt = [
-            {"role": "system", "content": "你是一个专业的信息合成专家。请将以下多段摘要内容合并为一份逻辑严密、重点突出的简报。只保留与用户查询事实相关的证据和数据。"},
-            {"role": "user", "content": f"针对查询 '{query}' 的上下文信息：\n{combined}"}
-        ]
+        
+        from prompts.utils import get_reduce_summarize_prompt
+        prompt = get_reduce_summarize_prompt(query, combined)
+        
         try:
             resp = llm.call_default_llm(prompt, temperature=0)
             return resp.content
@@ -157,10 +157,9 @@ class TextProcessor:
     @staticmethod
     async def _summarize_chunk(chunk: str, query: str, llm: Any) -> str:
         """提取单个文本块中与查询相关的关键数据点和事实。"""
-        prompt = [
-            {"role": "system", "content": "请从提供的文本中提取并总结与查询相关的关键信息、数据点和核心事实。"},
-            {"role": "user", "content": f"目标查询: {query}\n\n待处理文本:\n{chunk}"}
-        ]
+        from prompts.utils import get_map_summarize_prompt
+        prompt = get_map_summarize_prompt(query, chunk)
+        
         try:
             resp = llm.call_default_llm(prompt, temperature=0)
             content = resp.content.strip()

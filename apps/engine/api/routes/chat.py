@@ -18,8 +18,10 @@ async def summarize_chat(request: Dict[str, Any]):
 
     try:
         from core.llm_factory import LLMFactory
+        from prompts.assistant import get_summarize_prompt
+        
         llm_factory = LLMFactory()
-        system_prompt = "You are a specialized secretary. Summarize the user's intent into a title under 10 words. Answer in the same language as the user input."
+        system_prompt = get_summarize_prompt()
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": content}
