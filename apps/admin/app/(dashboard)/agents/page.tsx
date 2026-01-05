@@ -174,17 +174,17 @@ export default function AdminAgentsThemeAligned() {
                     <nav className="p-3 space-y-1">
                         {filteredAgents.map((agent) => (
                             <div
-                                key={agent.id}
+                                key={agent.identifier}
                                 onClick={() => setSelectedAgent(agent)}
                                 className={`w-full flex items-center justify-start py-2.5 px-4 rounded-xl gap-4 cursor-pointer transition-all group ${
-                                    selectedAgent?.id === agent.id
+                                    selectedAgent?.identifier === agent.identifier
                                         ? "bg-primary/10 text-primary font-bold border border-primary/20"
                                         : "text-foreground/50 hover:bg-foreground/5 border border-transparent"
                                 }`}
                             >
                                 <div
                                     className={`w-8 h-8 rounded-lg flex items-center justify-center text-lg shrink-0 overflow-hidden ${
-                                        selectedAgent?.id === agent.id
+                                        selectedAgent?.identifier === agent.identifier
                                             ? "bg-primary/20"
                                             : "bg-muted"
                                     }`}
@@ -202,7 +202,7 @@ export default function AdminAgentsThemeAligned() {
                                 <div className="truncate flex-1">
                                     <div
                                         className={`text-sm truncate leading-tight ${
-                                            selectedAgent?.id === agent.id
+                                            selectedAgent?.identifier === agent.identifier
                                                 ? "text-primary"
                                                 : "text-foreground"
                                         }`}
