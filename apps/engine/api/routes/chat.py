@@ -18,12 +18,11 @@ async def summarize_chat(request: Dict[str, Any]):
 
     try:
         from core.llm_factory import LLMFactory
-        from prompts.assistant import get_summarize_prompt
+        from prompts.utils import SUMMARIZE_PROMPT
         
         llm_factory = LLMFactory()
-        system_prompt = get_summarize_prompt()
         messages = [
-            {"role": "system", "content": system_prompt},
+            {"role": "system", "content": SUMMARIZE_PROMPT},
             {"role": "user", "content": content}
         ]
         response = llm_factory.call_default_llm(messages)

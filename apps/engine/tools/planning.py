@@ -87,78 +87,135 @@ class PlanningTool:
              return {"status": "error", "message": "无活动计划。"}
         return {"status": "success", "output": self._format_plan(_PLANS_STORE[plan_id])}
 
-    def sync_from_markdown(self, plan_text: str, plan_id: str = None) -> None:
-        """
-        [Middleware Hook] 从 Markdown 文本解析并同步计划状态。
-        支持格式:
-        - [x] 完成的任务
-        - [/] 进行中
-        - [ ] 待办
-        """
-        global _ACTIVE_PLAN_ID
-        target_id = plan_id or _ACTIVE_PLAN_ID
-        
-        # 如果没有活动计划，自动创建一个
-        if not target_id:
-            import uuid
-            target_id = str(uuid.uuid4())[:8]
-            _ACTIVE_PLAN_ID = target_id
-            _PLANS_STORE[target_id] = {
-                "plan_id": target_id,
-                "title": "Auto-Generated Plan",
-                "steps": [],
-                "step_statuses": [],
-                "created_at": ""
+        def sync_from_markdown(self, plan_text: str, plan_id: str = None) -> None:
+
+            """
+
+            [Middleware Hook] 从 Markdown 文本解析并同步计划状态。
+
+            """
+
+            global _ACTIVE_PLAN_ID
+
+            target_id = plan_id or _ACTIVE_PLAN_ID
+
+            
+
+            # 如果没有活动计划，自动创建一个
+
+            if not target_id:
+
+                import uuid
+
+                target_id = str(uuid.uuid4())[:8]
+
+                _ACTIVE_PLAN_ID = target_id
+
+                _PLANS_STORE[target_id] = {
+
+                    "plan_id": target_id,
+
+                    "title": "Auto-Generated Plan",
+
+                    "steps": [],
+
+                    "step_statuses": [],
+
+                    "created_at": ""
+
+                }
+
+    
+
+            if target_id not in _PLANS_STORE:
+
+                return
+
+    
+
+            import re
+
+            # 解析行： - [status] content，增加对 ! 的支持
+
+            pattern = re.compile(r'^\s*-\s*\[([ xX/!])\]\s*(.*)
+
+# 适配 Autonomy 的 run 接口
+def run(params: Dict[str, Any]) -> Dict[str, Any]:
+    tool = PlanningTool()
+    return tool.run(params)
+, re.MULTILINE)
+
+            matches = pattern.findall(plan_text)
+
+            
+
+            if not matches:
+
+                return
+
+    
+
+            new_steps = []
+
+            new_statuses = []
+
+            
+
+            status_map = {
+
+                'x': 'completed',
+
+                'X': 'completed',
+
+                '/': 'in_progress',
+
+                ' ': 'not_started',
+
+                '!': 'blocked'
+
             }
 
-        if target_id not in _PLANS_STORE:
-            return
+    
 
-        import re
-        # 解析行： - [status] content
-        pattern = re.compile(r'^\s*-\s*\[([ xX/])\]\s*(.*)$', re.MULTILINE)
-        matches = pattern.findall(plan_text)
-        
-        if not matches:
-            return
+            for mark, content in matches:
 
-        new_steps = []
-        new_statuses = []
-        
-        status_map = {
-            'x': 'completed',
-            'X': 'completed',
-            '/': 'in_progress',
-            ' ': 'not_started'
-        }
+                new_steps.append(content.strip())
 
-        for mark, content in matches:
-            new_steps.append(content.strip())
-            new_statuses.append(status_map.get(mark, 'not_started'))
+                new_statuses.append(status_map.get(mark, 'not_started'))
 
-        # 更新存储
-        if new_steps:
-            _PLANS_STORE[target_id]["steps"] = new_steps
-            _PLANS_STORE[target_id]["step_statuses"] = new_statuses
-            # print(f"[PlanningTool] Auto-synced {len(new_steps)} steps from markdown.")
+    
 
-    def _format_plan(self, plan: Dict[str, Any]) -> str:
-        output = f"Plan: {plan['title']} (ID: {plan['plan_id']})\n"
-        output += "=" * 30 + "\n"
-        
-        # 状态图标映射
-        icons = {
-            "not_started": "[ ]",
-            "in_progress": "[/]",
-            "completed": "[x]",
-            "blocked": "[! ]"
-        }
-        
-        for i, (step, status) in enumerate(zip(plan["steps"], plan["step_statuses"])):
-            icon = icons.get(status, "[?]")
-            output += f"{i}. {icon} {step}\n"
+            # 更新存储
+
+            if new_steps:
+
+                _PLANS_STORE[target_id]["steps"] = new_steps
+
+                _PLANS_STORE[target_id]["step_statuses"] = new_statuses
+
+    
+
+        def _format_plan(self, plan: Dict[str, Any]) -> str:
+
+            from prompts.planning import PLAN_STATUS_ICONS
+
             
-        return output
+
+            output = f"Plan: {plan['title']} (ID: {plan['plan_id']})\n"
+
+            output += "=" * 30 + "\n"
+
+            
+
+            for i, (step, status) in enumerate(zip(plan["steps"], plan["step_statuses"])):
+
+                icon = PLAN_STATUS_ICONS.get(status, "[?]")
+
+                output += f"{i}. {icon} {step}\n"
+
+                
+
+            return output
 
 # 适配 Autonomy 的 run 接口
 def run(params: Dict[str, Any]) -> Dict[str, Any]:

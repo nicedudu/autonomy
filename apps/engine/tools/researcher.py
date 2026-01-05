@@ -9,7 +9,7 @@ async def run(params: Dict[str, Any]) -> Dict[str, Any]:
     工业级深度调研工具。
     采用分布式抓取与分级摘要算法，解决超长上下文和实时性挑战。
     """
-    from prompts.researcher import get_researcher_expansion_prompt, get_researcher_synthesis_prompt
+    from prompts.researcher import EXPANSION_PROMPT, SYNTESIS_PROMPT
 
     query = params.get("query")
     if not query:
@@ -21,7 +21,7 @@ async def run(params: Dict[str, Any]) -> Dict[str, Any]:
     
     # 1. 意图拆解
     print(f"\n{'*'*20} [Researcher: 意图拆解] {'*'*20}")
-    expand_system = get_researcher_expansion_prompt()
+    expand_system = EXPANSION_PROMPT
     try:
         expansion_resp = llm.call_default_llm([
             {"role": "system", "content": expand_system},
@@ -88,7 +88,7 @@ async def run(params: Dict[str, Any]) -> Dict[str, Any]:
         return {"status": "error", "message": "所有情报来源均无法访问。"}
 
     final_context = "\n\n---\n\n".join(valid_briefs)
-    synthesize_system = get_researcher_synthesis_prompt()
+    synthesize_system = SYNTESIS_PROMPT
     
     try:
         final_resp = llm.call_default_llm([

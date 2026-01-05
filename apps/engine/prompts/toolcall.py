@@ -1,9 +1,8 @@
-def get_toolcall_instruction() -> str:
-    """
-    提供 Autonomy 专用的工具调用协议指令。
-    要求模型在执行前提供自然语言进度反馈。
-    """
-    return """[工具调用协议 - ACTION PROTOCOL]
+"""
+工具调用协议提示词。
+"""
+
+TOOLCALL_PROTOCOL = """[工具调用协议 - ACTION PROTOCOL]
 当你决定使用工具时，必须使用以下严格的格式：
 
 <status>用一句话描述你即将进行的动作（面向用户，严禁提及工具名称，如：正在检索厦门实时天气数据...）</status>

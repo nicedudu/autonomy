@@ -1,14 +1,22 @@
-def get_planning_instruction() -> str:
-    """
-    提供 Autonomy 的动态规划指令。
-    要求模型维护一个可见的任务账本。
-    """
-    return """[动态规划协议 - PLANNING PROTOCOL]
+"""
+任务规划协议提示词。
+"""
+
+# 计划状态与图标的统一映射
+PLAN_STATUS_ICONS = {
+    "not_started": "[ ]",
+    "in_progress": "[/]",
+    "completed": "[x]",
+    "blocked": "[!]"
+}
+
+PLANNING_PROTOCOL = """[动态规划协议 - PLANNING PROTOCOL]
 对于复杂任务，你必须在 <plan> 标签中维护一个任务账本：
 <plan>
 - [x] 已完成的步骤
 - [/] 正在执行的步骤
 - [ ] 待执行的步骤
+- [!] 已阻塞或受阻的步骤
 </plan>
 
 [准则]

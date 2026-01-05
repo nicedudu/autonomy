@@ -71,9 +71,15 @@ class AgentRuntime:
 
     def _compile_prompt(self, team_roster: str = "", global_facts: List[str] = None) -> str:
         """组装系统级指令。"""
-        from prompts.system import get_system_prompt
+        from core.prompt_manager import prompt_manager
+        
         capability_doc = self._load_capability_docs()
-        prompt = get_system_prompt(dynamic_capabilities=capability_doc, team_roster=team_roster, global_facts=global_facts)
+        prompt = prompt_manager.compile_system_prompt(
+            dynamic_capabilities=capability_doc, 
+            team_roster=team_roster, 
+            global_facts=global_facts
+        )
+        
         if self.manifest.system_prompt_template:
             prompt += f"\n\n[角色专属指令]\n{self.manifest.system_prompt_template}"
         return prompt
@@ -138,11 +144,16 @@ class AgentRuntime:
                             await mw.on_after_action(self.agent_id, action, result)
                         
                         # 观测结果反馈
-                        from prompts.runtime import get_observation_success_prompt, get_observation_failed_prompt
+                        from prompts.runtime import OBS_SUCCESS_TPL, OBS_FAIL_TPL
                         if result.status == Status.SUCCESS:
-                            current_prompt = get_observation_success_prompt(action.tool_name, result.output)
+                            current_prompt = OBS_SUCCESS_TPL.format(
+                                tool_name=action.tool_name, 
+                                output_summary=str(result.output)[:5000]
+                            )
                         else:
-                            current_prompt = get_observation_failed_prompt(action.tool_name, result.error)
+                            current_prompt = OBS_FAIL_TPL.format(
+                                error=result.error
+                            )
                         continue
                     except Exception as e:
                         current_prompt = f"\n[错误] 执行异常: {str(e)}"
@@ -151,11 +162,11 @@ class AgentRuntime:
 
             # 轮次耗尽处理
             if turn >= max_turns:
-                from prompts.runtime import get_max_turns_reached_prompt, get_final_summary_instruction
-                yield {"type": "stream", "agent_id": self.agent_id, "content": get_max_turns_reached_prompt()}
+                from prompts.runtime import MAX_TURNS_PROMPT, FINAL_SUMMARY_INSTRUCTION
+                yield {"type": "stream", "agent_id": self.agent_id, "content": MAX_TURNS_PROMPT}
                 
                 # 发起最后一轮总结
-                messages = [{"role": "system", "content": self.system_prompt}, {"role": "user", "content": get_final_summary_instruction()}]
+                messages = [{"role": "system", "content": self.system_prompt}, {"role": "user", "content": FINAL_SUMMARY_INSTRUCTION}]
                 async for chunk in self.llm_factory.call_llm_stream_async(self.agent_id, messages):
                     yield {"type": "stream", "agent_id": self.agent_id, "content": chunk}
 

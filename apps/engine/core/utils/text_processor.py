@@ -144,8 +144,13 @@ class TextProcessor:
         print(f"  [TextProcessor] 正在执行摘要聚合 (Reduce)...")
         combined = "\n\n".join(valid_intermediates)
         
-        from prompts.utils import get_reduce_summarize_prompt
-        prompt = get_reduce_summarize_prompt(query, combined)
+        from prompts.utils import REDUCE_SUMMARIZE_TPL
+        prompt = []
+        for msg in REDUCE_SUMMARIZE_TPL:
+            prompt.append({
+                "role": msg["role"],
+                "content": msg["content"].format(combined_text=combined, query=query)
+            })
         
         try:
             resp = llm.call_default_llm(prompt, temperature=0)
@@ -157,8 +162,13 @@ class TextProcessor:
     @staticmethod
     async def _summarize_chunk(chunk: str, query: str, llm: Any) -> str:
         """提取单个文本块中与查询相关的关键数据点和事实。"""
-        from prompts.utils import get_map_summarize_prompt
-        prompt = get_map_summarize_prompt(query, chunk)
+        from prompts.utils import MAP_SUMMARIZE_TPL
+        prompt = []
+        for msg in MAP_SUMMARIZE_TPL:
+            prompt.append({
+                "role": msg["role"],
+                "content": msg["content"].format(chunk=chunk, query=query)
+            })
         
         try:
             resp = llm.call_default_llm(prompt, temperature=0)
