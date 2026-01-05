@@ -37,9 +37,9 @@ class AgentRegistry:
     def _apply_database_override(self, manifest: AgentManifest) -> AgentManifest:
         """应用来自数据库的配置覆盖，确保管理后台的修改实时生效。"""
         try:
-            from core.supabase_manager import SupabaseManager
-            db = SupabaseManager()
-            db_config = db.get_agent_config(manifest.agent_id)
+            from services.agent import AgentService
+            svc = AgentService()
+            db_config = svc.get_agent_config(manifest.agent_id)
             if db_config:
                 manifest.name = db_config.get("name", manifest.name)
                 if not manifest.model:

@@ -4,7 +4,8 @@ import json
 from typing import Any, Dict, List, Optional
 
 from anthropic import Anthropic, AsyncAnthropic
-from core.supabase_manager import SupabaseManager
+from services.settings import SettingsService
+from services.agent import AgentService
 from openai import OpenAI, AsyncOpenAI, APIStatusError, BadRequestError
 from pydantic import BaseModel, Field
 from core.registry.manager import discovery_service
@@ -20,19 +21,20 @@ class LLMFactory:
     """
     大模型分发工厂 (生产级)。
     职责：
-    1. 凭证管理：从 DB 加载 API Key 和 Base URL。
+    1. 凭证管理：通过 Services 从数据库加载配置。
     2. 配置编排：合并系统默认、Agent 清单及运行时参数。
-    3. 标准化执行：通过 OpenAI/Anthropic 标准 SDK 进行可靠调用。
+    3. 标准化执行：通过标准 SDK 进行重试驱动的可靠调用。
     """
 
     def __init__(self):
-        self.supabase = SupabaseManager()
+        self.settings_service = SettingsService()
+        self.agent_service = AgentService()
         self._async_clients: Dict[str, AsyncOpenAI] = {}
         self._sync_clients: Dict[str, OpenAI] = {}
 
     def _get_base_credentials(self) -> Dict[str, Any]:
         """获取系统全局默认的供应商凭证和基础配置。"""
-        settings = self.supabase.get_system_settings()
+        settings = self.settings_service.get_system_settings()
         provider = settings.get("llm_providers") or {}
         
         return {
@@ -55,18 +57,22 @@ class LLMFactory:
             return config
 
         # 2. 合并数据库中的 Agent 配置（主要是关联的供应商凭证）
-        agent_db = self.supabase.get_agent_config(agent_id)
-        if agent_db:
-            db_provider = agent_db.get("llm_providers") or {}
-            if db_provider:
-                config["api_key"] = db_provider.get("api_token") or config["api_key"]
-                config["base_url"] = db_provider.get("api_base") or config["base_url"]
-                config["provider_type"] = db_provider.get("type") or config["provider_type"]
-            
-            if agent_db.get("model"):
-                config["model"] = agent_db["model"]
-            if agent_db.get("temperature") is not None:
-                config["temperature"] = agent_db["temperature"]
+        try:
+            agent_db = self.agent_service.get_agent_config(agent_id)
+            if agent_db:
+                db_provider = agent_db.get("llm_providers") or {}
+                if db_provider:
+                    config["api_key"] = db_provider.get("api_token") or config["api_key"]
+                    config["base_url"] = db_provider.get("api_base") or config["base_url"]
+                    config["provider_type"] = db_provider.get("type") or config["provider_type"]
+                
+                if agent_db.get("model"):
+                    config["model"] = agent_db["model"]
+                if agent_db.get("temperature") is not None:
+                    config["temperature"] = agent_db["temperature"]
+        except Exception:
+            # 容错：如果数据库查询失败，继续使用默认配置
+            pass
 
         # 3. 合并本地 Manifest 覆盖（优先级最高，由开发者直接控制行为）
         local_manifest = discovery_service.agents.get(agent_id)
