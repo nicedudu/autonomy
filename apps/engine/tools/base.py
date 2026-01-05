@@ -2,81 +2,67 @@ import inspect
 import functools
 import re
 from typing import Any, Dict, List, Callable, Optional, get_type_hints
-from pydantic import TypeAdapter, BaseModel
+from pydantic import TypeAdapter
 
 class BaseTool:
     """
-    智能体工具封装类 (MCP 风格)。
-    利用 Pydantic TypeAdapter 自动化构建 100% 准确的 JSON Schema。
+    智能体工具封装。
     """
     def __init__(self, func: Callable, name: str = None, description: str = None):
+        """初始化工具并生成契约。"""
         self.func = func
         self._name = name or func.__name__
         
-        # 1. 解析函数文档
+        # 提取描述
         doc = inspect.getdoc(func) or ""
         self._description = description or (doc.split("\n")[0] if doc else "无描述")
-        self._arg_docs = self._parse_docstring_args(doc)
         
-        # 2. 自动化 Schema 构建
-        self._parameters = self._build_parameters_schema()
+        # 提取参数文档
+        self._arg_docs = {}
+        for line in doc.split("\n"):
+            match = re.search(r"^\s*([\w_]+)\s*:\s*(.*)$", line)
+            if match:
+                self._arg_docs[match.group(1)] = match.group(2).strip()
+        
+        self._parameters = self._build_schema()
 
-    def _parse_docstring_args(self, doc: str) -> Dict[str, str]:
-        """从 Docstring 中提取参数描述 (支持 Google/NumPy 风格)。"""
-        arg_docs = {}
-        # 匹配 "name: description" 格式
-        pattern = re.compile(r"^\s*([\w_]+)\s*:\s*(.*)$\n", re.MULTILINE)
-        for match in pattern.finditer(doc):
-            arg_docs[match.group(1)] = match.group(2).strip()
-        return arg_docs
-
-    def _build_parameters_schema(self) -> Dict[str, Any]:
-        """
-        核心逻辑：利用 Pydantic TypeAdapter 生成 Schema。
-        这能完美支持 Optional, Union, List, Dict 以及自定义 BaseModel。
-        """
+    def _build_schema(self) -> Dict[str, Any]:
+        """构建兼容 LLM 的参数 Schema。"""
         sig = inspect.signature(self.func)
-        hints = get_type_hints(self.func)
-        
+        try:
+            hints = get_type_hints(self.func)
+        except Exception:
+            hints = {}
+
         properties = {}
         required = []
         
         for name, param in sig.parameters.items():
-            if name == "self": continue
+            if name in ("self", "cls"): continue
             
-            # 获取类型注解，默认为 Any
-            p_type = hints.get(name, Any)
-            
+            type_hint = hints.get(name, Any)
             try:
-                # 使用 Pydantic 的工业级转换器
-                adapter = TypeAdapter(p_type)
-                # 提取核心 Schema 结构
-                schema = adapter.json_schema()
-                
-                # 注入从文档中提取的描述
+                # 使用 TypeAdapter 生成 Schema 并精简
+                schema = TypeAdapter(type_hint).json_schema()
+                schema.pop("title", None) # 移除 Pydantic 默认标题
                 schema["description"] = self._arg_docs.get(name, f"参数 {name}")
-                
                 properties[name] = schema
-                if param.default is inspect.Parameter.empty:
-                    required.append(name)
-            except Exception as e:
-                # 极端情况下的回退逻辑
-                properties[name] = {"type": "string", "description": str(e)}
+            except Exception:
+                properties[name] = {"type": "string", "description": self._arg_docs.get(name, f"参数 {name}")}
+            
+            if param.default is inspect.Parameter.empty:
+                required.append(name)
+                
+        return {"type": "object", "properties": properties, "required": required}
 
-        return {
-            "type": "object",
-            "properties": properties,
-            "required": required
-        }
-
-    async def run(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """执行工具，适配同步与异步。"""
+    async def run(self, **kwargs) -> Any:
+        """安全执行工具逻辑。"""
         if inspect.iscoroutinefunction(self.func):
-            return await self.func(**params)
-        return self.func(**params)
+            return await self.func(**kwargs)
+        return self.func(**kwargs)
 
     def to_schema(self) -> Dict[str, Any]:
-        """生成符合 OpenAI 工具调用规范的定义。"""
+        """返回 OpenAI 定义格式。"""
         return {
             "name": self._name,
             "description": self._description,
@@ -85,17 +71,17 @@ class BaseTool:
 
 def tool(name: str = None, description: str = None):
     """
-    智能装饰器：将普通 Python 函数转化为 Agent 工具。
+    工具定义装饰器 (MCP 风格)。
     """
     def decorator(func: Callable):
-        # 包装函数
+        # 创建工具封装实例
         t = BaseTool(func, name, description)
         
         @functools.wraps(func)
-        async def wrapper(*args, **kwargs):
-            return await func(*args, **kwargs)
+        def wrapper(*args, **kwargs):
+            return func(*args, **kwargs)
             
-        # 挂载元数据，供注册中心发现
+        # 挂载工具对象，供系统发现
         wrapper.__tool__ = t
         return wrapper
     return decorator

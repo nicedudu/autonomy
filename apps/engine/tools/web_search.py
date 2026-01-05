@@ -5,15 +5,12 @@ from tools.base import tool
 @tool()
 async def web_search(query: str, provider: Optional[str] = "duckduckgo") -> Dict[str, Any]:
     """
-    实时互联网搜索，用于获取最新的事实、数据、汇率或新闻信息。
+    搜索互联网实时信息。
     
     Args:
         query: 具体的搜索关键词。
-        provider: 指定搜索引擎供应商（duckduckgo/tavily/google）。
+        provider: 搜索供应商。
     """
-    print(f"[WebSearch] 正在搜索: {query} (Provider: {provider})")
-    
-    # 实际执行逻辑...
     from ddgs import DDGS
     try:
         loop = asyncio.get_event_loop()
@@ -22,3 +19,7 @@ async def web_search(query: str, provider: Optional[str] = "duckduckgo") -> Dict
         return {"status": "success", "output": "\n".join(formatted)}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
+async def run(params: Dict[str, Any]) -> Dict[str, Any]:
+    """兼容旧版调用。"""
+    return await web_search(**params)
