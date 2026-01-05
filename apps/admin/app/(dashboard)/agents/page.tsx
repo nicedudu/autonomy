@@ -43,20 +43,26 @@ export default function AdminAgentsThemeAligned() {
             let engineAgents: any[] = [];
             try {
                 // 使用 127.0.0.1 提高连接稳定性
-                const agentsRes = await fetch("http://127.0.0.1:8000/api/agents", {
-                    signal: AbortSignal.timeout(3000) // 3秒超时，防止无限挂起
-                });
+                const agentsRes = await fetch(
+                    "http://127.0.0.1:8000/api/agents",
+                    {
+                        signal: AbortSignal.timeout(3000), // 3秒超时，防止无限挂起
+                    }
+                );
                 if (agentsRes.ok) {
                     engineAgents = await agentsRes.json();
                 }
             } catch (engineErr) {
-                console.warn("本地引擎 API 离线，将仅显示数据库数据:", engineErr);
+                console.warn(
+                    "本地引擎 API 离线，将仅显示数据库数据:",
+                    engineErr
+                );
             }
 
             // 2. 获取 Supabase 云端数据
             const [providersRes, settingsRes] = await Promise.all([
                 supabase.from("llm_providers").select("*"),
-                supabase.from("system_settings").select("*").single()
+                supabase.from("system_settings").select("*").single(),
             ]);
 
             // 3. 数据合并与状态更新
@@ -64,7 +70,10 @@ export default function AdminAgentsThemeAligned() {
                 setAgents(engineAgents);
             } else {
                 // 如果引擎不可用，从数据库获取备选列表
-                const { data: dbAgents } = await supabase.from("agents").select("*").order("identifier");
+                const { data: dbAgents } = await supabase
+                    .from("agents")
+                    .select("*")
+                    .order("identifier");
                 if (dbAgents) setAgents(dbAgents);
             }
 
@@ -73,7 +82,8 @@ export default function AdminAgentsThemeAligned() {
                 setGeneralConfig({
                     provider_id: settingsRes.data.default_provider_id,
                     model: settingsRes.data.default_model,
-                    core_system_prompt: settingsRes.data.core_system_prompt || "",
+                    core_system_prompt:
+                        settingsRes.data.core_system_prompt || "",
                 });
             }
 
@@ -177,14 +187,16 @@ export default function AdminAgentsThemeAligned() {
                                 key={agent.identifier}
                                 onClick={() => setSelectedAgent(agent)}
                                 className={`w-full flex items-center justify-start py-2.5 px-4 rounded-xl gap-4 cursor-pointer transition-all group ${
-                                    selectedAgent?.identifier === agent.identifier
+                                    selectedAgent?.identifier ===
+                                    agent.identifier
                                         ? "bg-primary/10 text-primary font-bold border border-primary/20"
                                         : "text-foreground/50 hover:bg-foreground/5 border border-transparent"
                                 }`}
                             >
                                 <div
                                     className={`w-8 h-8 rounded-lg flex items-center justify-center text-lg shrink-0 overflow-hidden ${
-                                        selectedAgent?.identifier === agent.identifier
+                                        selectedAgent?.identifier ===
+                                        agent.identifier
                                             ? "bg-primary/20"
                                             : "bg-muted"
                                     }`}
@@ -202,7 +214,8 @@ export default function AdminAgentsThemeAligned() {
                                 <div className="truncate flex-1">
                                     <div
                                         className={`text-sm truncate leading-tight ${
-                                            selectedAgent?.identifier === agent.identifier
+                                            selectedAgent?.identifier ===
+                                            agent.identifier
                                                 ? "text-primary"
                                                 : "text-foreground"
                                         }`}
@@ -258,9 +271,9 @@ export default function AdminAgentsThemeAligned() {
             </aside>
 
             {/* === Right: Content === */}
-            <main className="flex-1 flex flex-col min-w-0 bg-background relative">
+            <main className="flex-1 flex flex-col min-w-0 bg-background relative overflow-hidden">
                 {selectedAgent === "general_config" ? (
-                    <div className="flex-1 flex flex-col">
+                    <div className="flex-1 flex flex-col min-h-0">
                         <header className="h-12 border-b border-border/40 px-4 flex items-center justify-between shrink-0 bg-background sticky top-0 z-20">
                             <div className="flex items-center gap-2">
                                 <div className="w-6 h-6 rounded-md overflow-hidden flex items-center justify-center bg-primary/10">
@@ -274,8 +287,8 @@ export default function AdminAgentsThemeAligned() {
                                 </span>
                             </div>
                         </header>
-                        <ScrollArea className="flex-1 p-6">
-                            <div className="max-w-4xl mx-auto space-y-10 pb-12">
+                        <ScrollArea className="h-full">
+                            <div className="max-w-4xl mx-auto space-y-10 p-6 pb-12">
                                 {/* 1. LLM Config */}
                                 <section className="space-y-4">
                                     <div className="flex items-center gap-2 text-foreground">
@@ -299,10 +312,12 @@ export default function AdminAgentsThemeAligned() {
                                                         generalConfig.provider_id
                                                     }
                                                     onValueChange={(val) => {
-                                                        const p = providers.find(
-                                                            (prov) =>
-                                                                prov.id === val
-                                                        );
+                                                        const p =
+                                                            providers.find(
+                                                                (prov) =>
+                                                                    prov.id ===
+                                                                    val
+                                                            );
                                                         setGeneralConfig({
                                                             provider_id: val,
                                                             model:
@@ -377,7 +392,8 @@ export default function AdminAgentsThemeAligned() {
                                         onChange={(e) =>
                                             setGeneralConfig({
                                                 ...generalConfig,
-                                                core_system_prompt: e.target.value,
+                                                core_system_prompt:
+                                                    e.target.value,
                                             })
                                         }
                                         className="w-full h-[600px] bg-background border-border rounded-xl p-4 text-sm leading-relaxed font-mono shadow-none"
@@ -385,7 +401,7 @@ export default function AdminAgentsThemeAligned() {
                                     />
                                 </section>
 
-                                <div className="flex justify-end pt-6">
+                                <div className="flex justify-end pt-10">
                                     <Button
                                         onClick={handleSave}
                                         disabled={isSaving}
@@ -399,7 +415,7 @@ export default function AdminAgentsThemeAligned() {
                         </ScrollArea>
                     </div>
                 ) : selectedAgent ? (
-                    <>
+                    <div className="flex-1 flex flex-col min-h-0">
                         <header className="h-12 border-b border-border/40 px-4 flex items-center justify-between shrink-0 bg-background sticky top-0 z-20">
                             <div className="flex items-center gap-2">
                                 <div className="w-6 h-6 rounded-md overflow-hidden flex items-center justify-center bg-primary/10">
@@ -423,8 +439,8 @@ export default function AdminAgentsThemeAligned() {
                             </div>
                         </header>
 
-                        <ScrollArea className="flex-1 bg-background p-6 h-full overflow-auto">
-                            <div className="max-w-4xl mx-auto space-y-10 pb-12">
+                        <ScrollArea className="h-full">
+                            <div className="max-w-4xl mx-auto space-y-10 p-6 pb-24">
                                 {/* 1. LLM Config */}
                                 <section className="space-y-4">
                                     <div className="flex items-center gap-2 text-foreground">
@@ -445,7 +461,8 @@ export default function AdminAgentsThemeAligned() {
                                                 </Label>
                                                 <Select
                                                     value={
-                                                        selectedAgent.provider_id || generalConfig.provider_id
+                                                        selectedAgent.provider_id ||
+                                                        generalConfig.provider_id
                                                     }
                                                     onValueChange={(val) =>
                                                         setSelectedAgent({
@@ -474,7 +491,10 @@ export default function AdminAgentsThemeAligned() {
                                                     模型选择
                                                 </Label>
                                                 <Select
-                                                    value={selectedAgent.model || generalConfig.model}
+                                                    value={
+                                                        selectedAgent.model ||
+                                                        generalConfig.model
+                                                    }
                                                     onValueChange={(val) =>
                                                         setSelectedAgent({
                                                             ...selectedAgent,
@@ -486,19 +506,40 @@ export default function AdminAgentsThemeAligned() {
                                                         <SelectValue placeholder="选择模型" />
                                                     </SelectTrigger>
                                                     <SelectContent className="border-border">
-                                                        {availableModels.length > 0 ? (
-                                                            availableModels.map((m: string) => (
-                                                                <SelectItem key={m} value={m}>
-                                                                    {m}
-                                                                </SelectItem>
-                                                            ))
-                                                        ) : (
-                                                            generalAvailableModels.map((m: string) => (
-                                                                <SelectItem key={m} value={m}>
-                                                                    {m}
-                                                                </SelectItem>
-                                                            ))
-                                                        )}
+                                                        {availableModels.length >
+                                                        0
+                                                            ? availableModels.map(
+                                                                  (
+                                                                      m: string
+                                                                  ) => (
+                                                                      <SelectItem
+                                                                          key={
+                                                                              m
+                                                                          }
+                                                                          value={
+                                                                              m
+                                                                          }
+                                                                      >
+                                                                          {m}
+                                                                      </SelectItem>
+                                                                  )
+                                                              )
+                                                            : generalAvailableModels.map(
+                                                                  (
+                                                                      m: string
+                                                                  ) => (
+                                                                      <SelectItem
+                                                                          key={
+                                                                              m
+                                                                          }
+                                                                          value={
+                                                                              m
+                                                                          }
+                                                                      >
+                                                                          {m}
+                                                                      </SelectItem>
+                                                                  )
+                                                              )}
                                                     </SelectContent>
                                                 </Select>
                                             </div>
@@ -556,7 +597,7 @@ export default function AdminAgentsThemeAligned() {
                                     />
                                 </section>
 
-                                <div className="flex justify-end">
+                                <div className="flex justify-end pt-10">
                                     <Button
                                         onClick={handleSave}
                                         disabled={isSaving}
@@ -568,7 +609,7 @@ export default function AdminAgentsThemeAligned() {
                                 </div>
                             </div>
                         </ScrollArea>
-                    </>
+                    </div>
                 ) : (
                     <div className="h-full flex flex-col items-center justify-center text-muted-foreground/30 font-black uppercase tracking-[0.2em] text-sm">
                         请选择左侧智能体进行配置
