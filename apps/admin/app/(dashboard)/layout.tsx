@@ -15,7 +15,6 @@ export default function DashboardLayout({
 
     const menuItems = [
         { name: "智能体", href: "/agents", icon: Users },
-        { name: "技能中心", href: "/skills", icon: Hammer },
         { name: "模型配置", href: "/providers", icon: Globe2 },
     ];
 
