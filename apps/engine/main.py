@@ -8,8 +8,8 @@ load_dotenv()
 def main():
     print("=== Autonomy Engine 控制平面启动 ===")
     # 启动 FastAPI 服务
-    # 使用字符串形式 "core.api_server:app" 以支持 reload 模式
-    uvicorn.run("core.api_server:app", host="0.0.0.0", port=8000, reload=True)
+    # 切换至新的 api 模块化架构
+    uvicorn.run("api.main:app", host="0.0.0.0", port=8000, reload=True)
 
 if __name__ == "__main__":
     main()
