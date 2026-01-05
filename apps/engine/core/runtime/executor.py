@@ -41,23 +41,16 @@ class AgentRuntime:
 
     def _load_capability_docs(self) -> str:
         """从注册表提取并格式化当前节点被授权使用的能力文档。"""
-        import os
+        from tools import CORE_TOOLS
         import json
         
         docs = []
-        # 1. 核心工具描述
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        tools_json_path = os.path.join(os.path.dirname(os.path.dirname(current_dir)), "tools", "tools.json")
-        try:
-            if os.path.exists(tools_json_path):
-                with open(tools_json_path, "r", encoding="utf-8") as f:
-                    tools_meta = json.load(f)
-                    docs.append("[核心工具 (CORE TOOLS)]")
-                    for tool in tools_meta.get("core_tools", []):
-                        docs.append(f"- `{tool['name']}`: {tool['description']}")
-                        docs.append(f"  参数 Schema: {json.dumps(tool['parameters'], ensure_ascii=False)}")
-        except Exception:
-            pass
+        # 1. 动态生成核心工具描述 (取代旧的 tools.json)
+        docs.append("[核心工具 (CORE TOOLS)]")
+        for tool in CORE_TOOLS:
+            schema = tool.to_schema()
+            docs.append(f"- `{schema['name']}`: {schema['description']}")
+            docs.append(f"  参数 Schema: {json.dumps(schema['parameters'], ensure_ascii=False)}")
 
         # 2. 专项技能渐进式索引
         if self.manifest.capabilities:
