@@ -64,10 +64,10 @@ class AgentRuntime:
 
     def _compile_prompt(self, team_roster: str = "", global_facts: List[str] = None) -> str:
         """组装系统级指令。"""
-        from core.prompt_manager import prompt_manager
+        from core.prompt_compiler import prompt_compiler
         
         capability_doc = self._load_capability_docs()
-        prompt = prompt_manager.compile_system_prompt(
+        prompt = prompt_compiler.compile_system_prompt(
             dynamic_capabilities=capability_doc, 
             team_roster=team_roster, 
             global_facts=global_facts
