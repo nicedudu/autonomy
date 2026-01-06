@@ -1,11 +1,14 @@
 from typing import Dict, List, Optional
+
 from core.tools.base import BaseTool
+
 
 class ToolRegistry:
     """
     工具注册表。
     负责管理系统中所有可用的原子工具。
     """
+
     def __init__(self):
         self._tools: Dict[str, BaseTool] = {}
 
@@ -27,6 +30,7 @@ class ToolRegistry:
     def get_schemas(self) -> List[Dict]:
         """获取所有工具的 OpenAI 格式 Schema"""
         return [t.to_openai_format() for t in self._tools.values()]
+
 
 # 全局工具注册表实例
 tool_registry = ToolRegistry()

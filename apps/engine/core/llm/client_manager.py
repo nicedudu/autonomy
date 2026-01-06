@@ -34,14 +34,14 @@ class LLMClientManager:
     def _create_adapter(self, ptype: str, api_key: str, base_url: str) -> LLMProviderAdapter:
         """工厂方法：创建具体的适配器实例。"""
         import os
-        
+
         # 容错处理：如果 api_key 为空，尝试从环境变量获取
         if not api_key:
             if ptype == "openai":
                 api_key = os.environ.get("OPENAI_API_KEY")
             elif ptype == "anthropic":
                 api_key = os.environ.get("ANTHROPIC_API_KEY")
-            
+
             # 如果依然为空且是兼容模式，注入占位符（兼容本地模型）
             if not api_key and ptype not in ["openai", "anthropic"]:
                 api_key = "sk-no-key-required"

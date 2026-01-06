@@ -1,11 +1,12 @@
-from typing import Optional, List, Any
-from core.schema.models import AgentManifest
-from core.registry.manager import discovery_service
+from typing import List, Optional
+
 from core.agent.base import BaseAgent
 from core.agent.llm_agent import LLMAgent
 from core.agent.runtime import AgentRuntime
-from core.middleware.base import BaseMiddleware
 from core.llm.resolver import LLMConfigResolver
+from core.middleware.base import BaseMiddleware
+from core.registry.manager import discovery_service
+
 
 class AgentFactory:
     """
@@ -31,24 +32,24 @@ class AgentFactory:
 
     @staticmethod
     def create_runtime(
-        agent_id: str, 
+        agent_id: str,
         middlewares: Optional[List[BaseMiddleware]] = None
     ) -> AgentRuntime:
         """
         创建带标准中间件链的运行时环境。
         """
         agent = AgentFactory.create_agent(agent_id)
-        
+
         # 加载内置标准中间件 (洋葱模型)
-        from core.middleware.environment import EnvironmentMiddleware
         from core.middleware.context import ContextManagerMiddleware
-        
+        from core.middleware.environment import EnvironmentMiddleware
+
         # 顺序：环境注入 -> 上下文管理 -> 外部自定义中间件
         standard_middlewares = [
             EnvironmentMiddleware(),
             ContextManagerMiddleware(max_history_len=12)
         ]
-        
+
         if middlewares:
             standard_middlewares.extend(middlewares)
 

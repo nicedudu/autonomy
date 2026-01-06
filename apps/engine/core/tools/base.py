@@ -1,5 +1,7 @@
-from typing import Any, Dict, List, Optional, Callable
-from pydantic import BaseModel, Field
+from typing import Any, Callable, Dict, Optional
+
+from pydantic import BaseModel
+
 
 class ToolMetadata(BaseModel):
     """工具元数据模型"""
@@ -8,17 +10,20 @@ class ToolMetadata(BaseModel):
     parameters: Dict[str, Any]
     strict: bool = True
 
+
 class ToolResult(BaseModel):
     """工具执行结果模型"""
     status: str  # "success" or "error"
     output: Any
     error: Optional[str] = None
 
+
 class BaseTool:
     """
     智能体工具基类。
     所有具体工具需继承此类或通过装饰器转换。
     """
+
     def __init__(self, name: str, description: str, parameters: Dict[str, Any], func: Callable):
         self.name = name
         self.description = description

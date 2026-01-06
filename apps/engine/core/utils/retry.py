@@ -1,16 +1,14 @@
-import asyncio
-import time
 import logging
-from typing import Callable, Type, Tuple
 
 logger = logging.getLogger(__name__)
+
 
 class RetryStrategy:
     """
     通用重试策略组件。
     支持指数退避与特定异常过滤。
     """
-    
+
     @staticmethod
     def get_backoff_delay(attempt: int, base: float = 2.0) -> float:
         """计算指数退避延迟时间。"""
@@ -25,11 +23,11 @@ class RetryStrategy:
         error_str = str(error).lower()
         if "rate limit" in error_str or "429" in error_str:
             return True
-            
+
         # 检查对象属性
         if getattr(error, "status_code", None) == 429:
             return True
-            
+
         return False
 
     @staticmethod

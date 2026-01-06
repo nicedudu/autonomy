@@ -1,12 +1,12 @@
-from typing import Dict, Any
-from core.tools.base import BaseTool, ToolResult
-from core.schema.collaboration import DelegationRequest
-import json
+from typing import Any, Dict
+
+from core.tools.base import BaseTool
+
 
 async def delegate_to_agent_func(target_agent_id: str, instruction: str, **kwargs) -> Dict[str, Any]:
     """
     将任务委派给另一个专家智能体。
-    
+
     target_agent_id: 目标智能体的 ID (如 'researcher', 'coder')
     instruction: 明确的任务指令
     """

@@ -1,7 +1,8 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, AsyncGenerator
-from core.agent.state import AgentState, AgentMessage
+
+from core.agent.state import AgentMessage, AgentState
 from core.schema.models import AgentManifest
+
 
 class BaseAgent(ABC):
     """

@@ -268,8 +268,7 @@ export default function ProviderManagement() {
                             <div className="flex items-center gap-2">
                                 <Box size={16} className="text-primary" />
                                 <span className="text-[14px] font-bold text-foreground capitalize">
-                                    {getVendorName(selectedProvider.api_base)}{" "}
-                                    配置
+                                    {getVendorName(selectedProvider.api_base)}
                                 </span>
                             </div>
                         </header>
@@ -283,15 +282,15 @@ export default function ProviderManagement() {
                                             size={14}
                                             className="text-primary"
                                         />
-                                        <h3 className="text-xs font-bold uppercase tracking-wider">
-                                            基础连接配置
+                                        <h3 className="text-xs font-bold">
+                                            基础
                                         </h3>
                                     </div>
 
                                     <Card className="p-6 bg-muted/5 border-border rounded-xl space-y-6 shadow-none">
                                         <div className="grid grid-cols-12 gap-6">
                                             <div className="space-y-2 col-span-6">
-                                                <Label className="text-xs font-black text-muted-foreground uppercase tracking-widest">
+                                                <Label className="text-xs font-black text-muted-foreground">
                                                     供应商名称
                                                 </Label>
                                                 <Input
@@ -311,7 +310,7 @@ export default function ProviderManagement() {
                                                 />
                                             </div>
                                             <div className="space-y-2 col-span-6">
-                                                <Label className="text-xs font-black text-muted-foreground uppercase tracking-widest">
+                                                <Label className="text-xs font-black text-muted-foreground">
                                                     协议标准
                                                 </Label>
                                                 <Select
@@ -343,9 +342,9 @@ export default function ProviderManagement() {
                                                 </Select>
                                             </div>
                                             <div className="space-y-2 col-span-12">
-                                                <Label className="text-xs font-black text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
+                                                <Label className="text-xs font-black text-muted-foreground flex items-center gap-1.5">
                                                     <Globe2 size={10} />{" "}
-                                                    供应商图标
+                                                    图标地址
                                                 </Label>
                                                 <Input
                                                     value={
@@ -364,7 +363,7 @@ export default function ProviderManagement() {
                                                 />
                                             </div>
                                             <div className="space-y-2 col-span-12">
-                                                <Label className="text-xs font-black text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
+                                                <Label className="text-xs font-black text-muted-foreground flex items-center gap-1.5">
                                                     <Globe2 size={10} />{" "}
                                                     接口地址 (Base URL)
                                                 </Label>
@@ -385,9 +384,8 @@ export default function ProviderManagement() {
                                                 />
                                             </div>
                                             <div className="space-y-2 col-span-12">
-                                                <Label className="text-xs font-black text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
+                                                <Label className="text-xs font-black text-muted-foreground flex items-center gap-1.5">
                                                     <Key size={10} /> API 密钥
-                                                    (Token)
                                                 </Label>
                                                 <Input
                                                     type="password"
@@ -411,9 +409,9 @@ export default function ProviderManagement() {
                                             <Button
                                                 onClick={handleSave}
                                                 disabled={isSaving}
-                                                className="text-[11px] font-bold h-8 px-6"
+                                                className="text-xs px-6 h-9 font-bold shadow-sm"
                                             >
-                                                <Save size={12} />
+                                                <Save size={14} />
                                                 {isSaving
                                                     ? "保存中..."
                                                     : "保存"}
@@ -430,7 +428,7 @@ export default function ProviderManagement() {
                                                 size={14}
                                                 className="text-primary"
                                             />
-                                            <h3 className="text-xs font-bold uppercase tracking-wider">
+                                            <h3 className="text-xs font-bold">
                                                 模型列表
                                             </h3>
                                         </div>
@@ -585,10 +583,10 @@ export default function ProviderManagement() {
                                                                     e.stopPropagation();
                                                                     handleSave();
                                                                 }}
-                                                                className="text-[11px] h-8"
+                                                                className="text-xs px-6 h-9 font-bold shadow-sm"
                                                             >
                                                                 <Save
-                                                                    size={12}
+                                                                    size={14}
                                                                     className="mr-1"
                                                                 />{" "}
                                                                 保存

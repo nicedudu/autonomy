@@ -9,6 +9,7 @@ import {
 import { Badge } from "@autonomy/ui/components/badge";
 import { Button } from "@autonomy/ui/components/button";
 import { Card } from "@autonomy/ui/components/card";
+import { ModeToggle } from "@autonomy/ui/components/mode-toggle";
 import { ScrollArea } from "@autonomy/ui/components/scroll-area";
 import {
     Tooltip,
@@ -40,7 +41,7 @@ import remarkGfm from "remark-gfm";
 // --- Data Visualization Renderer ---
 const ChartRenderer = ({ data }: { data: any }) => {
     return (
-        <div className="my-6 bg-card border border-border/60 rounded-2xl overflow-hidden shadow-sm animate-in fade-in zoom-in-95 duration-500">
+        <div className="my-6 bg-card border border-border/60 rounded-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-500">
             <div className="bg-muted/30 px-4 py-3 border-b border-border/40 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
@@ -120,7 +121,7 @@ const MarkdownComponents = {
 
     // --- Enhanced Blockquote ---
     blockquote: ({ children }: any) => (
-        <div className="flex gap-3 bg-linear-to-r from-primary/5 to-transparent p-4 my-4 rounded-xl border border-primary/10 shadow-sm items-start not-prose animate-in slide-in-from-left-2">
+        <div className="flex gap-3 bg-linear-to-r from-primary/5 to-transparent p-4 my-4 rounded-xl border border-primary/10 items-start not-prose animate-in slide-in-from-left-2">
             <div className="p-1 bg-primary/10 text-primary rounded-lg shrink-0 mt-0.5">
                 <Lightbulb size={16} />
             </div>
@@ -407,7 +408,7 @@ const AssistantMessageItem = ({
     }
 
     mainContent = mainContent
-        .replace(/<call>\s*(@\w+)\s*(.*?)\s*<\/call>/gs, "\n\n> **$1** $2\n\n")
+        .replace(/<call>\s*(@\w+)\s*(.*?)\s*<\/call>/g, "\n\n> **$1** $2\n\n")
         .trim();
 
     return (
@@ -554,6 +555,7 @@ interface Report {
 
 export default function ExecutionConsole() {
     const [agents, setAgents] = useState<Agent[]>([]);
+    const [sessions, setSessions] = useState<any[]>([]);
     const [currentSessionId, setCurrentSessionId] = useState<string | null>(
         null
     );
@@ -579,6 +581,41 @@ export default function ExecutionConsole() {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const isProgrammaticScroll = useRef(false);
     const agentsRef = useRef<Agent[]>([]);
+
+    const fetchSessions = async () => {
+        const { data } = await supabase
+            .from("chat_sessions")
+            .select("*")
+            .order("created_at", { ascending: false });
+        if (data) setSessions(data);
+    };
+
+    useEffect(() => {
+        fetchSessions();
+    }, []);
+
+    const fetchMessages = async (sessionId: string) => {
+        setIsLoading(true);
+        const { data } = await supabase
+            .from("chat_messages")
+            .select("*")
+            .eq("session_id", sessionId)
+            .order("created_at", { ascending: true });
+        if (data) {
+            setMessages(
+                data.map((m) => ({
+                    id: m.id,
+                    role: m.role,
+                    content: m.content,
+                    agent_id: m.agent_id,
+                    agent_name: m.agent_name,
+                    agent_avatar: m.agent_avatar,
+                    timestamp: new Date(m.created_at).getTime(),
+                }))
+            );
+        }
+        setIsLoading(false);
+    };
 
     useEffect(() => {
         let ws: WebSocket | null = null;
@@ -734,6 +771,7 @@ export default function ExecutionConsole() {
             if (data) {
                 sessionId = data.id;
                 setCurrentSessionId(sessionId);
+                fetchSessions();
             }
         }
         const mentionedAgent = agents.find((a) =>
@@ -772,6 +810,7 @@ export default function ExecutionConsole() {
                                 .from("chat_sessions")
                                 .update({ title: data.title })
                                 .eq("id", sessionId);
+                            fetchSessions();
                         }
                     });
             }
@@ -941,24 +980,45 @@ export default function ExecutionConsole() {
                                 setCurrentSessionId(null);
                                 setSessionTitle("新会话");
                             }}
-                            className="w-full justify-start gap-3 bg-primary/10 text-primary rounded-xl h-11 text-xs font-bold transition-all"
+                            className="w-full justify-start gap-3 bg-primary/10 text-primary rounded-xl h-11 text-xs font-bold transition-all hover:text-background dark:hover:text-foreground"
                         >
                             <Plus size={18} />
                             开启新会话
                         </Button>
                         <ScrollArea className="flex-1 mt-4">
                             <div className="space-y-1.5">
-                                <div className="px-4 py-2 text-[10px] font-black opacity-30 uppercase tracking-widest">
+                                <div className="px-4 py-2 text-[10px] font-black opacity-30 tracking-widest">
                                     最近会话
                                 </div>
-                                <button className="w-full text-left p-3.5 rounded-xl bg-primary/10 text-primary flex items-center gap-3">
-                                    <MessageSquare size={14} />
-                                    <div className="truncate flex-1 text-xs font-semibold">
-                                        {sessionTitle}
-                                    </div>
-                                </button>
+                                {sessions.map((session) => (
+                                    <button
+                                        key={session.id}
+                                        onClick={() => {
+                                            setCurrentSessionId(session.id);
+                                            setSessionTitle(session.title);
+                                            fetchMessages(session.id);
+                                        }}
+                                        className={`w-full text-left p-3.5 rounded-xl flex items-center gap-3 transition-all ${
+                                            currentSessionId === session.id
+                                                ? "bg-primary/10 text-primary"
+                                                : "text-muted-foreground/60 hover:bg-muted/50"
+                                        }`}
+                                    >
+                                        <MessageSquare size={14} />
+                                        <div className="truncate flex-1 text-xs font-semibold">
+                                            {session.title}
+                                        </div>
+                                    </button>
+                                ))}
                             </div>
                         </ScrollArea>
+                    </div>
+
+                    {/* Sidebar Footer */}
+                    <div className="p-4 border-t border-sidebar-border/40 bg-sidebar/50">
+                        <div className="flex items-center justify-end px-3">
+                            <ModeToggle />
+                        </div>
                     </div>
                 </div>
             </aside>
@@ -1040,7 +1100,7 @@ export default function ExecutionConsole() {
                                         />
                                     ) : (
                                         <div className="flex flex-col items-end space-y-1.5">
-                                            <span className="text-[10px] font-black text-primary/40 uppercase">
+                                            <span className="text-[10px] font-black text-primary/40">
                                                 You
                                             </span>
                                             <div className="bg-primary/5 border border-primary/20 p-4 rounded-2xl rounded-tr-none text-sm font-semibold max-w-[90%] text-primary">
@@ -1057,7 +1117,7 @@ export default function ExecutionConsole() {
                             <Button
                                 size="sm"
                                 onClick={() => scrollToBottom("smooth")}
-                                className="rounded-full shadow-lg bg-primary text-primary-foreground text-[10px] font-bold gap-2 h-9 px-4"
+                                className="rounded-full bg-primary text-primary-foreground text-[10px] font-bold gap-2 h-9 px-4"
                             >
                                 {hasNewMessages ? (
                                     <Sparkles
@@ -1079,7 +1139,7 @@ export default function ExecutionConsole() {
 
                 <div className="p-6 bg-background relative">
                     {showAgentMenu && (
-                        <Card className="absolute bottom-full left-6 w-56 bg-popover border shadow-2xl p-1 z-50 rounded-xl mb-2">
+                        <Card className="absolute bottom-full left-6 w-56 bg-popover border p-1 z-50 rounded-xl mb-2">
                             {agents
                                 .filter((a) =>
                                     a.name
@@ -1125,7 +1185,7 @@ export default function ExecutionConsole() {
                                 ))}
                         </Card>
                     )}
-                    <Card className="bg-background/50 border-border/40 p-1.5 flex flex-col gap-1 rounded-xl">
+                    <Card className="bg-background/50 border-border/40 p-1.5 flex flex-col gap-1 rounded-xl shadow-none">
                         <textarea
                             ref={textareaRef}
                             value={inputValue}
@@ -1207,7 +1267,7 @@ export default function ExecutionConsole() {
                                 <PanelLeft size={16} className="rotate-180" />
                             </Button>
                         )}
-                        <div className="text-[11px] font-bold uppercase opacity-50">
+                        <div className="text-[11px] font-bold opacity-50">
                             控制台 / 执行面板
                         </div>
                     </div>
@@ -1250,7 +1310,7 @@ export default function ExecutionConsole() {
                                     <Card className="p-8 space-y-6">
                                         <div className="flex items-center gap-3">
                                             <div className="w-2 h-5 bg-primary rounded-full" />
-                                            <h4 className="text-xs font-black uppercase tracking-widest">
+                                            <h4 className="text-xs font-black tracking-widest">
                                                 策略分析摘要
                                             </h4>
                                         </div>
@@ -1264,7 +1324,7 @@ export default function ExecutionConsole() {
                         ) : (
                             <div className="flex-1 flex flex-col items-center justify-center opacity-20 grayscale">
                                 <Zap size={64} className="animate-pulse" />
-                                <h3 className="text-2xl font-black uppercase tracking-widest mt-4">
+                                <h3 className="text-2xl font-black tracking-widest mt-4">
                                     准备就绪
                                 </h3>
                             </div>
