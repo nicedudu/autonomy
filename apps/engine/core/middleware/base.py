@@ -1,38 +1,28 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List, Optional
-from core.schema.models import ActionCall, ActionResult
+from typing import Optional, Dict, Any, List
+from core.agent.state import AgentState, StateUpdate, AgentMessage
 
-class AgentMiddleware(ABC):
+class BaseMiddleware(ABC):
     """
-    智能体运行时中间件基类。
-    允许在 Agent 生命周期的关键节点注入逻辑。
+    智能体中间件基类 (生命周期拦截器)。
     """
 
-    async def on_startup(self, agent_id: str, prompt: str) -> None:
-        """Agent 启动时触发"""
-        pass
-
-    async def on_before_think(self, agent_id: str, history: List[Dict]) -> Optional[List[Dict]]:
+    async def pre_inference(self, state: AgentState) -> Optional[StateUpdate]:
         """
-        LLM 思考前触发。
-        允许中间件读取甚至修改传入 LLM 的消息历史 (Context)。
-        如果返回 List[Dict]，则后续流程将使用该新的历史记录；
-        如果返回 None，则使用原始记录。
+        在编译 System Prompt 和发送给 LLM 之前触发。
+        用于动态注入上下文变量或拦截请求。
         """
-        pass
+        return None
 
-    async def on_after_think(self, agent_id: str, response: str) -> str:
-        """LLM 思考后触发 (可用于记录日志或修改响应)"""
-        return response
+    async def post_inference(self, state: AgentState, raw_response: str) -> Optional[StateUpdate]:
+        """
+        在 LLM 推理完成后触发。
+        用于执行上下文清理、Token 统计或结果审计。
+        """
+        return None
 
-    async def on_before_action(self, agent_id: str, action: ActionCall) -> None:
-        """工具执行前触发"""
-        pass
-
-    async def on_after_action(self, agent_id: str, action: ActionCall, result: ActionResult) -> None:
-        """工具执行后触发"""
-        pass
-
-    async def on_shutdown(self, agent_id: str) -> None:
-        """Agent 结束时触发"""
-        pass
+    async def on_action(self, state: AgentState, action: Dict[str, Any], result: Any) -> Optional[StateUpdate]:
+        """
+        在工具执行完成后触发。
+        """
+        return None

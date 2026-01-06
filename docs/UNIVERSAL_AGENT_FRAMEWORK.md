@@ -1,27 +1,54 @@
-# 通用智能体能力扩展框架 (Universal Agent Framework)
+# Autonomy 通用智能体框架规范 (V2.0)
 
-## 1. 技能驱动设计 (Skill-Driven Design)
+## 1. 智能体定义规范 (Agent Definition)
 
-在 Autonomy 中，一切垂直领域的逻辑都应通过“技能 (Skills)”来扩展。系统内核保持领域无关性。
+在 V2.0 中，注册一个新 Agent 必须在 `core/registry/internal.py` 中通过 `AgentDefinition` 对象进行声明。
 
-## 2. 技能包构造规范
+```python
+"coder_agent": AgentDefinition(
+    agent_id="coder_agent",
+    name="高级编码专家",
+    role="Programmer",
+    capabilities=["terminal_execute", "read_file", "write_file"],
+    temperature=0.3, # 代码生成需要低随机性
+    instruction_template=BASE_INSTRUCTION + "\n\n[角色职责]\n..."
+)
+```
 
-每个技能包必须存放于 `apps/engine/agents/skills/` 的子目录下，其核心文件为 `SKILL.md`。
+## 2. 运行时生命周期 (The Lifecycle)
 
-### 2.1 结构定义
-- **Metadata (YAML)**: 定义技能名称、简介、适用场景。
-- **Instructions (Markdown)**: 详细的分步操作指南 (SOP)。
-- **Scripts**: (可选) 实现具体的物理逻辑。
+`AgentRuntime` 驱动的 ReAct 循环包含以下关键节点，开发者可通过中间件介入：
 
-## 3. 渐进式激活机制 (Progressive Activation)
+1.  **Init**: 加载 `AgentDefinition` 并初始化 `AgentState`。
+2.  **Pre-Inference**: 
+    *   `EnvironmentMiddleware` 注入动态变量。
+    *   `ContextManagerMiddleware` 修剪历史记录。
+    *   `PromptCompiler` 渲染 Jinja2 模板。
+3.  **Inference**: 发起 LLM 请求。
+4.  **Parse**: `ProtocolParser` 提取 XML 标签。
+5.  **Dispatch**:
+    *   如果是 `conclusion` -> 任务完成。
+    *   如果是 `action` -> 调用 `tool_registry` 执行。
+    *   如果是 `call` -> 进入 `Orchestrator` 递归移交。
+6.  **Loop**: 将结果作为 `observation` 回注 `State`，进入下一轮。
 
-为保证效率，技能加载分为两个阶段：
-1. **索引加载**: 系统扫描所有技能的描述，建立索引。
-2. **内容注入**: 只有当任务意图匹配某项技能时，系统才将完整的 Markdown 指令注入到上下文。
+## 3. 中间件开发指南 (Middleware Extension)
 
-## 4. 开发工作流
+自定义中间件必须继承 `BaseMiddleware` 并实现对应的生命周期 Hook。
 
-1. **新建目录**: 创建技能专属文件夹。
-2. **编写清单**: 定义 `SKILL.md`。
-3. **注册工具**: 如果涉及新 API，在 `tools.json` 中定义 Schema 并在 `tools/` 目录下实现。
-4. **验证**: 测试智能体在相关场景下能否准确“激活”并“遵循”该技能。
+### 关键 Hook 签名：
+*   `async def pre_inference(self, state: AgentState) -> Optional[StateUpdate]`
+*   `async def post_inference(self, state: AgentState, raw_response: str) -> Optional[StateUpdate]`
+
+### 最佳实践：
+*   **不要直接修改 `state` 内部属性**：必须返回一个新的 `StateUpdate` 对象。
+*   **保持无状态**：中间件本身不应存储针对特定任务的状态，所有的持久化应通过 `state.context` 传递。
+
+## 4. 协作协议 (A2A Handoff)
+
+当 Agent A 无法独立完成任务时，必须产出 `<call>` 标签。
+*   **隔离性**：Agent B 拥有独立的 Context Window，不继承 Agent A 的所有 History。
+*   **状态回传**：Agent B 的最终结论将以 XML 观测值形式返回给 Agent A。
+
+---
+*Autonomy - 标准化智能体协作的每一毫秒*

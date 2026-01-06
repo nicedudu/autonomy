@@ -21,8 +21,6 @@ async def get_agents():
                 "role": m.role,
                 "description": m.description,
                 "capabilities": m.capabilities,
-                "model": m.model,
-                "system_prompt": m.system_prompt_template,
                 "avatar": f"https://api.dicebear.com/7.x/avataaars/svg?seed={m.agent_id}"
             }
             for m in manifests.values()

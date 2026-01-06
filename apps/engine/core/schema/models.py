@@ -14,17 +14,31 @@ class AgentInterface(BaseModel):
     input_schema: Dict[str, Any] = Field(default_factory=dict)
     output_schema: Dict[str, Any] = Field(default_factory=dict)
 
+class LLMConfig(BaseModel):
+    """
+    LLM 执行配置对象。
+    实现 Agent 对模型参数的自包含 (Self-Contained)。
+    """
+    provider: str = "openai_compatible"
+    model: str
+    api_key: Optional[str] = None
+    base_url: Optional[str] = None
+    temperature: float = 0.7
+    max_tokens: int = 4096
+    top_p: float = 1.0
+    extra_params: Dict[str, Any] = Field(default_factory=dict)
+
 class AgentManifest(BaseModel):
-    """智能体声明式清单模型。"""
+    """
+    智能体身份声明 (Identity Declaration)。
+    仅定义 Agent 是“谁”以及“能做什么”。
+    大脑配置 (Model/Provider) 严格由数据库管理。
+    """
     agent_id: str
     name: str
     role: str
     description: Optional[str] = None
-    interface: AgentInterface = Field(default_factory=AgentInterface)
-    capabilities: List[str] = Field(default_factory=list) 
-    model: Optional[str] = None 
-    provider_id: Optional[str] = None 
-    system_prompt_template: Optional[str] = None 
+    capabilities: List[str] = Field(default_factory=list)
 
 class SkillManifest(BaseModel):
     """

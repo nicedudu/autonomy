@@ -1,87 +1,64 @@
+from core.tools.base import BaseTool, ToolMetadata, ToolResult
+from core.tools.registry import tool_registry
 import inspect
 import functools
-import re
 from typing import Any, Dict, List, Callable, Optional, get_type_hints
 from pydantic import TypeAdapter
 
-class BaseTool:
+# 为了保持装饰器兼容性，重新实现 tool 装饰器逻辑，但产出符合 core 标准的实例
+def tool(name: Optional[str] = None, description: Optional[str] = None):
     """
-    智能体工具封装。
+    工具定义装饰器。
+    将普通函数转换为 core.tools.base.BaseTool 实例。
     """
-    def __init__(self, func: Callable, name: str = None, description: str = None):
-        """初始化工具并生成契约。"""
-        self.func = func
-        self._name = name or func.__name__
+    def decorator(func: Callable):
+        # 1. 自动推导名称和描述
+        tool_name = name or func.__name__
+        tool_desc = description or (inspect.getdoc(func) or "无描述").split("\n")[0]
         
-        # 提取描述
-        doc = inspect.getdoc(func) or ""
-        self._description = description or (doc.split("\n")[0] if doc else "无描述")
-        
-        # 提取参数文档
-        self._arg_docs = {}
-        for line in doc.split("\n"):
-            match = re.search(r"^\s*([\w_]+)\s*:\s*(.*)$", line)
-            if match:
-                self._arg_docs[match.group(1)] = match.group(2).strip()
-        
-        self._parameters = self._build_schema()
-
-    def _build_schema(self) -> Dict[str, Any]:
-        """构建兼容 LLM 的参数 Schema。"""
-        sig = inspect.signature(self.func)
+        # 2. 自动构建参数 Schema
+        sig = inspect.signature(func)
         try:
-            hints = get_type_hints(self.func)
+            hints = get_type_hints(func)
         except Exception:
             hints = {}
 
         properties = {}
         required = []
-        
-        for name, param in sig.parameters.items():
-            if name in ("self", "cls"): continue
+        for p_name, param in sig.parameters.items():
+            if p_name in ("self", "cls"): continue
             
-            type_hint = hints.get(name, Any)
+            type_hint = hints.get(p_name, Any)
             try:
-                # 使用 TypeAdapter 生成 Schema 并精简
-                schema = TypeAdapter(type_hint).json_schema()
-                schema.pop("title", None) # 移除 Pydantic 默认标题
-                schema["description"] = self._arg_docs.get(name, f"参数 {name}")
-                properties[name] = schema
+                adapter = TypeAdapter(type_hint)
+                schema = adapter.json_schema()
+                schema.pop("title", None)
+                properties[p_name] = schema
             except Exception:
-                properties[name] = {"type": "string", "description": self._arg_docs.get(name, f"参数 {name}")}
+                properties[p_name] = {"type": "string"}
             
             if param.default is inspect.Parameter.empty:
-                required.append(name)
-                
-        return {"type": "object", "properties": properties, "required": required}
+                required.append(p_name)
 
-    async def run(self, **kwargs) -> Any:
-        """安全执行工具逻辑。"""
-        if inspect.iscoroutinefunction(self.func):
-            return await self.func(**kwargs)
-        return self.func(**kwargs)
-
-    def to_schema(self) -> Dict[str, Any]:
-        """返回 OpenAI 定义格式。"""
-        return {
-            "name": self._name,
-            "description": self._description,
-            "parameters": self._parameters
+        params_schema = {
+            "type": "object",
+            "properties": properties,
+            "required": required,
+            "additionalProperties": False
         }
 
-def tool(name: str = None, description: str = None):
-    """
-    工具定义装饰器 (MCP 风格)。
-    """
-    def decorator(func: Callable):
-        # 创建工具封装实例
-        t = BaseTool(func, name, description)
+        # 3. 创建符合 V2 标准的实例
+        instance = BaseTool(
+            name=tool_name,
+            description=tool_desc,
+            parameters=params_schema,
+            func=func
+        )
         
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
             return func(*args, **kwargs)
             
-        # 挂载工具对象，供系统发现
-        wrapper.__tool__ = t
+        wrapper.__tool__ = instance
         return wrapper
     return decorator

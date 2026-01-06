@@ -1,3 +1,4 @@
+import uuid
 from typing import Any, Dict, List, Optional, Callable
 from core.schema.models import Message
 

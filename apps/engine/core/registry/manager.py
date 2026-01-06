@@ -17,7 +17,25 @@ class DiscoveryService:
 
     def initialize(self):
         """执行全量扫描与初始化。"""
+        # 1. 初始化智能体 (V2.0 逻辑)
         self.agents.discover()
+        
+        # 2. 注册核心工具
+        from tools import CORE_TOOLS
+        from core.tools.registry import tool_registry
+        from core.tools.base import BaseTool
+        
+        for t in CORE_TOOLS:
+            # 兼容处理：确保拿到的是 BaseTool 实例
+            if isinstance(t, BaseTool):
+                tool_registry.register(t)
+            elif hasattr(t, "name"):
+                # 如果是其他具有 name 属性的对象
+                tool_registry.register(t)
+            else:
+                print(f"\033[91m[Discovery] Skipping invalid tool: {t}\033[0m")
+        
+        # 3. 扫描外部技能 (未来可扩展)
         self.skills.discover()
 
 # 全局单例，供系统各组件调用

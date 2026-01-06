@@ -10,9 +10,11 @@ from api.deps import orchestrator
 async def lifespan(app: FastAPI):
     """
     管理应用程序的生命周期。
-    负责在启动时初始化全局回调，并在关闭时清理资源。
     """
     # --- 启动逻辑 ---
+    from core.registry.manager import discovery_service
+    discovery_service.initialize()
+    
     def bus_to_ui_callback(message):
         """将内部总线消息实时转发至 WebSocket 发送队列。"""
         try:

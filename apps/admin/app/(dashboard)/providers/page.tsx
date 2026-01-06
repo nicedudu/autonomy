@@ -15,8 +15,10 @@ import {
 } from "@autonomy/ui/components/select";
 import {
     Box,
+    Check,
     ChevronDown,
     ChevronRight,
+    Copy,
     Globe2,
     Key,
     Plus,
@@ -33,10 +35,18 @@ export default function ProviderManagement() {
     const [searchQuery, setSearchQuery] = useState("");
     const [loading, setLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
+    const [copiedModel, setCopiedModel] = useState<string | null>(null);
 
     const [expandedModelIndex, setExpandedModelIndex] = useState<number | null>(
         null
     );
+
+    const handleCopy = (e: React.MouseEvent, text: string) => {
+        e.stopPropagation();
+        navigator.clipboard.writeText(text);
+        setCopiedModel(text);
+        setTimeout(() => setCopiedModel(null), 2000);
+    };
 
     const fetchProviders = async () => {
         setLoading(true);
@@ -323,6 +333,9 @@ export default function ProviderManagement() {
                                                         <SelectItem value="openai">
                                                             OpenAI
                                                         </SelectItem>
+                                                        <SelectItem value="openai_compatible">
+                                                            OpenAI (兼容)
+                                                        </SelectItem>
                                                         <SelectItem value="anthropic">
                                                             Anthropic
                                                         </SelectItem>
@@ -488,6 +501,29 @@ export default function ProviderManagement() {
                                                         <span className="text-sm font-medium font-mono">
                                                             {model}
                                                         </span>
+                                                        <Button
+                                                            size="icon"
+                                                            variant="ghost"
+                                                            onClick={(e) =>
+                                                                handleCopy(
+                                                                    e,
+                                                                    model
+                                                                )
+                                                            }
+                                                            className="w-6 h-6 text-muted-foreground transition-colors hover:text-background"
+                                                        >
+                                                            {copiedModel ===
+                                                            model ? (
+                                                                <Check
+                                                                    size={6}
+                                                                    className="text-green-500"
+                                                                />
+                                                            ) : (
+                                                                <Copy
+                                                                    size={6}
+                                                                />
+                                                            )}
+                                                        </Button>
                                                     </div>
                                                     <span className="text-[10px] text-muted-foreground font-mono opacity-50">
                                                         MODEL ID

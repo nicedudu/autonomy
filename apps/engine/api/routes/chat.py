@@ -1,10 +1,13 @@
+import json
+from typing import Any, Dict
+
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
-from typing import Any, Dict
-import json
+
 from api.deps import orchestrator
 
 router = APIRouter(prefix="/api/chat", tags=["Chat"])
+
 
 @router.post("/summarize")
 async def summarize_chat(request: Dict[str, Any]):
@@ -17,21 +20,36 @@ async def summarize_chat(request: Dict[str, Any]):
         return {"title": "新会话"}
 
     try:
-        from core.llm_factory import LLMFactory
-        from prompts.utils import SUMMARIZE_PROMPT
-        
-        llm_factory = LLMFactory()
+        from core.llm.service import LLMService
+        from core.schema.models import LLMConfig
+        from services.settings import SettingsService
+
+        # 获取默认配置
+        settings = SettingsService().get_system_settings()
+        config = LLMConfig(
+            provider="openai_compatible", # 假设默认
+            model=settings.get("default_model", "gpt-4o"),
+            api_key=settings.get("llm_providers", {}).get("api_token"),
+            base_url=settings.get("llm_providers", {}).get("api_base")
+        )
+
+        llm_service = LLMService()
         messages = [
-            {"role": "system", "content": SUMMARIZE_PROMPT},
+            {"role": "system", "content": "请将用户的输入总结为一个简短的标题（10字以内）。仅返回标题文本。"},
             {"role": "user", "content": content}
         ]
-        response = llm_factory.call_default_llm(messages)
-        title = response.content.strip().strip('"').strip("'")
-        if len(title) > 50:
-            title = title[:47] + "..."
+        
+        response = llm_service.call(config, messages)
+        # ProviderResponse.output 是一个包含 Dict 的 List
+        if response.output and "content" in response.output[0]:
+            title = response.output[0]["content"].strip().strip('"').strip("'")
+        else:
+            title = "新会话"
         return {"title": title}
     except Exception as e:
+        print(f"Summarize failed: {e}")
         return {"title": "新会话"}
+
 
 @router.post("/stream")
 async def chat_stream(request: Dict[str, Any]):

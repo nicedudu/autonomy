@@ -59,22 +59,33 @@ export default function AdminAgentsThemeAligned() {
                 );
             }
 
-            // 2. 获取 Supabase 云端数据
-            const [providersRes, settingsRes] = await Promise.all([
+            // 2. 获取 Supabase 云端数据 (调度配置)
+            const [providersRes, settingsRes, dbAgentsRes] = await Promise.all([
                 supabase.from("llm_providers").select("*"),
                 supabase.from("system_settings").select("*").single(),
+                supabase.from("agents").select("*"),
             ]);
 
-            // 3. 数据合并与状态更新
-            if (engineAgents.length > 0) {
-                setAgents(engineAgents);
-            } else {
-                // 如果引擎不可用，从数据库获取备选列表
-                const { data: dbAgents } = await supabase
-                    .from("agents")
-                    .select("*")
-                    .order("identifier");
-                if (dbAgents) setAgents(dbAgents);
+            // 3. 深度数据合并
+            const dbAgents = dbAgentsRes.data || [];
+            
+            // 以 Engine 的身份定义为基准，合并数据库的调度配置
+            const mergedAgents = engineAgents.map(engineAgent => {
+                const dbConfig = dbAgents.find(da => da.identifier === engineAgent.identifier);
+                return {
+                    ...engineAgent,
+                    provider_id: dbConfig?.provider_id || "",
+                    model: dbConfig?.model || "",
+                    temperature: dbConfig?.temperature || 0.7,
+                    extra_params: dbConfig?.extra_params || {},
+                };
+            });
+
+            if (mergedAgents.length > 0) {
+                setAgents(mergedAgents);
+            } else if (dbAgents.length > 0) {
+                // 降级方案：如果 Engine 离线，至少显示数据库里的配置
+                setAgents(dbAgents);
             }
 
             if (providersRes.data) setProviders(providersRes.data);
@@ -133,10 +144,9 @@ export default function AdminAgentsThemeAligned() {
                 .update({
                     default_provider_id: generalConfig.provider_id,
                     default_model: generalConfig.model,
-                    core_system_prompt: generalConfig.core_system_prompt,
                     updated_at: new Date().toISOString(),
                 })
-                .eq("id", 1); // Assumes single row with ID 1
+                .eq("id", 1);
             error = settingsError;
         } else {
             const { error: agentError } = await supabase
@@ -144,16 +154,13 @@ export default function AdminAgentsThemeAligned() {
                 .update({
                     provider_id: selectedAgent.provider_id,
                     model: selectedAgent.model,
-                    system_prompt: selectedAgent.system_prompt,
-                    user_prompt: selectedAgent.user_prompt,
-                    temperature: selectedAgent.temperature,
                 })
-                .eq("identifier", selectedAgent.identifier); // 直接使用 identifier 匹配主键
+                .eq("identifier", selectedAgent.identifier);
             error = agentError;
         }
 
         if (!error) {
-            alert("配置已保存");
+            alert("调度配置已保存");
             fetchData();
         } else {
             alert("保存失败: " + error.message);
@@ -201,15 +208,11 @@ export default function AdminAgentsThemeAligned() {
                                             : "bg-muted"
                                     }`}
                                 >
-                                    {agent.avatar?.startsWith("http") ? (
-                                        <img
-                                            src={agent.avatar}
-                                            alt={agent.name}
-                                            className="w-full h-full object-cover"
-                                        />
-                                    ) : (
-                                        agent.avatar
-                                    )}
+                                    <img
+                                        src={agent.avatar}
+                                        alt={agent.name}
+                                        className="w-full h-full object-cover"
+                                    />
                                 </div>
                                 <div className="truncate flex-1">
                                     <div
@@ -262,7 +265,7 @@ export default function AdminAgentsThemeAligned() {
                                 className="flex flex-row items-center gap-2.5 py-1.5 px-3"
                             >
                                 <span className="font-bold text-xs">
-                                    通用智能体配置
+                                    全局资源配置
                                 </span>
                             </TooltipContent>
                         </Tooltip>
@@ -283,13 +286,12 @@ export default function AdminAgentsThemeAligned() {
                                     />
                                 </div>
                                 <span className="text-[14px] font-bold text-foreground">
-                                    通用智能体配置
+                                    全局默认大脑配置
                                 </span>
                             </div>
                         </header>
                         <ScrollArea className="h-full">
                             <div className="max-w-4xl mx-auto space-y-10 p-6 pb-12">
-                                {/* 1. LLM Config */}
                                 <section className="space-y-4">
                                     <div className="flex items-center gap-2 text-foreground">
                                         <Zap
@@ -297,7 +299,7 @@ export default function AdminAgentsThemeAligned() {
                                             className="text-primary"
                                         />
                                         <h3 className="text-xs font-bold uppercase tracking-wider">
-                                            LLM 核心配置 (全局默认)
+                                            默认 LLM 调度
                                         </h3>
                                     </div>
 
@@ -319,6 +321,7 @@ export default function AdminAgentsThemeAligned() {
                                                                     val
                                                             );
                                                         setGeneralConfig({
+                                                            ...generalConfig,
                                                             provider_id: val,
                                                             model:
                                                                 p
@@ -376,30 +379,12 @@ export default function AdminAgentsThemeAligned() {
                                     </Card>
                                 </section>
 
-                                {/* 2. Base System Prompt */}
-                                <section className="space-y-4">
-                                    <div className="flex items-center gap-2 text-foreground">
-                                        <Terminal
-                                            size={14}
-                                            className="text-primary"
-                                        />
-                                        <h3 className="text-xs font-bold uppercase tracking-wider">
-                                            基础系统指令 (Base System Prompt)
-                                        </h3>
-                                    </div>
-                                    <Textarea
-                                        value={generalConfig.core_system_prompt}
-                                        onChange={(e) =>
-                                            setGeneralConfig({
-                                                ...generalConfig,
-                                                core_system_prompt:
-                                                    e.target.value,
-                                            })
-                                        }
-                                        className="w-full h-[600px] bg-background border-border rounded-xl p-4 text-sm leading-relaxed font-mono shadow-none"
-                                        placeholder="在此定义所有智能体必须遵循的基础认知逻辑与通讯协议..."
-                                    />
-                                </section>
+                                <div className="p-6 bg-primary/5 rounded-2xl border border-primary/10">
+                                    <p className="text-xs text-primary/70 leading-relaxed">
+                                        提示：全局大脑配置将作为所有未设置专属模型的智能体的兜底配置。
+                                        智能体的核心业务逻辑（指令集）已固化在系统内核中，Admin 后台仅负责算力资源的经济调度。
+                                    </p>
+                                </div>
 
                                 <div className="flex justify-end pt-10">
                                     <Button
@@ -408,7 +393,7 @@ export default function AdminAgentsThemeAligned() {
                                         className="text-sm px-8 h-10 font-bold shadow-lg shadow-primary/20"
                                     >
                                         <Save size={16} />
-                                        {isSaving ? "保存中..." : "保存"}
+                                        {isSaving ? "保存中..." : "保存全局设置"}
                                     </Button>
                                 </div>
                             </div>
@@ -419,29 +404,20 @@ export default function AdminAgentsThemeAligned() {
                         <header className="h-12 border-b border-border/40 px-4 flex items-center justify-between shrink-0 bg-background sticky top-0 z-20">
                             <div className="flex items-center gap-2">
                                 <div className="w-6 h-6 rounded-md overflow-hidden flex items-center justify-center bg-primary/10">
-                                    {selectedAgent.avatar?.startsWith(
-                                        "http"
-                                    ) ? (
-                                        <img
-                                            src={selectedAgent.avatar}
-                                            alt={selectedAgent.name}
-                                            className="w-full h-full object-cover"
-                                        />
-                                    ) : (
-                                        <span className="text-sm">
-                                            {selectedAgent.avatar}
-                                        </span>
-                                    )}
+                                    <img
+                                        src={selectedAgent.avatar}
+                                        alt={selectedAgent.name}
+                                        className="w-full h-full object-cover"
+                                    />
                                 </div>
                                 <span className="text-[14px] font-bold text-foreground">
-                                    {selectedAgent.name}
+                                    {selectedAgent.name} (调度管理)
                                 </span>
                             </div>
                         </header>
 
                         <ScrollArea className="h-full">
                             <div className="max-w-4xl mx-auto space-y-10 p-6 pb-24">
-                                {/* 1. LLM Config */}
                                 <section className="space-y-4">
                                     <div className="flex items-center gap-2 text-foreground">
                                         <Zap
@@ -449,7 +425,7 @@ export default function AdminAgentsThemeAligned() {
                                             className="text-primary"
                                         />
                                         <h3 className="text-xs font-bold uppercase tracking-wider">
-                                            LLM 核心配置
+                                            算力分配 (Model Routing)
                                         </h3>
                                     </div>
 
@@ -457,7 +433,7 @@ export default function AdminAgentsThemeAligned() {
                                         <div className="grid grid-cols-2 gap-6">
                                             <div className="space-y-2">
                                                 <Label className="text-xs font-black text-muted-foreground uppercase tracking-widest">
-                                                    供应商
+                                                    供应商 (Provider)
                                                 </Label>
                                                 <Select
                                                     value={
@@ -488,7 +464,7 @@ export default function AdminAgentsThemeAligned() {
                                             </div>
                                             <div className="space-y-2">
                                                 <Label className="text-xs font-black text-muted-foreground uppercase tracking-widest">
-                                                    模型选择
+                                                    目标模型 (Model)
                                                 </Label>
                                                 <Select
                                                     value={
@@ -506,40 +482,16 @@ export default function AdminAgentsThemeAligned() {
                                                         <SelectValue placeholder="选择模型" />
                                                     </SelectTrigger>
                                                     <SelectContent className="border-border">
-                                                        {availableModels.length >
-                                                        0
-                                                            ? availableModels.map(
-                                                                  (
-                                                                      m: string
-                                                                  ) => (
-                                                                      <SelectItem
-                                                                          key={
-                                                                              m
-                                                                          }
-                                                                          value={
-                                                                              m
-                                                                          }
-                                                                      >
-                                                                          {m}
-                                                                      </SelectItem>
-                                                                  )
-                                                              )
-                                                            : generalAvailableModels.map(
-                                                                  (
-                                                                      m: string
-                                                                  ) => (
-                                                                      <SelectItem
-                                                                          key={
-                                                                              m
-                                                                          }
-                                                                          value={
-                                                                              m
-                                                                          }
-                                                                      >
-                                                                          {m}
-                                                                      </SelectItem>
-                                                                  )
-                                                              )}
+                                                        {(availableModels.length > 0 ? availableModels : generalAvailableModels).map(
+                                                            (m: string) => (
+                                                                <SelectItem
+                                                                    key={m}
+                                                                    value={m}
+                                                                >
+                                                                    {m}
+                                                                </SelectItem>
+                                                            )
+                                                        )}
                                                     </SelectContent>
                                                 </Select>
                                             </div>
@@ -547,55 +499,17 @@ export default function AdminAgentsThemeAligned() {
                                     </Card>
                                 </section>
 
-                                {/* 2. System Prompt */}
-                                <section className="space-y-4">
-                                    <div className="flex items-center gap-2 text-foreground">
-                                        <Terminal
-                                            size={14}
-                                            className="text-primary"
-                                        />
-                                        <h3 className="text-xs font-bold uppercase tracking-wider">
-                                            系统提示词 (System Prompt)
-                                        </h3>
+                                <div className="p-6 bg-muted/30 rounded-2xl border border-dashed border-border">
+                                    <div className="flex items-start gap-3">
+                                        <Code2 size={16} className="text-muted-foreground mt-1" />
+                                        <div className="space-y-1">
+                                            <h4 className="text-xs font-bold text-foreground/80">管控声明</h4>
+                                            <p className="text-xs text-muted-foreground leading-relaxed">
+                                                当前界面仅允许配置智能体的“大脑”来源。智能体的核心指令、执行逻辑及推理温度已在系统代码中固化，以确保业务执行的稳定性。
+                                            </p>
+                                        </div>
                                     </div>
-                                    <Textarea
-                                        value={
-                                            selectedAgent.system_prompt || ""
-                                        }
-                                        onChange={(e) =>
-                                            setSelectedAgent({
-                                                ...selectedAgent,
-                                                system_prompt: e.target.value,
-                                            })
-                                        }
-                                        className="w-full h-48 bg-background border-border rounded-xl p-4 text-sm leading-relaxed font-mono shadow-none"
-                                        placeholder="在此确立智能体的身份协议与行为准则..."
-                                    />
-                                </section>
-
-                                {/* 3. User Prompt */}
-                                <section className="space-y-4">
-                                    <div className="flex items-center gap-2 text-foreground">
-                                        <Code2
-                                            size={14}
-                                            className="text-primary"
-                                        />
-                                        <h3 className="text-xs font-bold uppercase tracking-wider">
-                                            用户提示词 (User Prompt)
-                                        </h3>
-                                    </div>
-                                    <Textarea
-                                        value={selectedAgent.user_prompt || ""}
-                                        onChange={(e) =>
-                                            setSelectedAgent({
-                                                ...selectedAgent,
-                                                user_prompt: e.target.value,
-                                            })
-                                        }
-                                        className="w-full h-96 bg-background border-border rounded-xl p-4 text-sm leading-relaxed font-mono shadow-none"
-                                        placeholder="在此定义具体的执行任务与操作流程..."
-                                    />
-                                </section>
+                                </div>
 
                                 <div className="flex justify-end pt-10">
                                     <Button
@@ -604,7 +518,7 @@ export default function AdminAgentsThemeAligned() {
                                         className="text-sm px-8 h-10 font-bold shadow-lg shadow-primary/20"
                                     >
                                         <Save size={16} />
-                                        {isSaving ? "保存中..." : "保存"}
+                                        {isSaving ? "保存调度方案..." : "保存配置"}
                                     </Button>
                                 </div>
                             </div>
@@ -612,7 +526,7 @@ export default function AdminAgentsThemeAligned() {
                     </div>
                 ) : (
                     <div className="h-full flex flex-col items-center justify-center text-muted-foreground/30 font-black uppercase tracking-[0.2em] text-sm">
-                        请选择左侧智能体进行配置
+                        请选择左侧智能体进行资源调度
                     </div>
                 )}
             </main>

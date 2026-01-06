@@ -444,9 +444,9 @@ const AssistantMessageItem = ({
             {/* --- 前置等待动画 --- */}
             {isStreaming && !mainContent && !thought && !plan && (
                 <div className="flex gap-1.5 items-center p-2 animate-in fade-in duration-300">
-                    <span className="w-1.5 h-1.5 rounded-full bg-primary/40 animate-bounce [animation-duration:0.8s] [animation-delay:-0.3s]"></span>
-                    <span className="w-1.5 h-1.5 rounded-full bg-primary/40 animate-bounce [animation-duration:0.8s] [animation-delay:-0.15s]"></span>
-                    <span className="w-1.5 h-1.5 rounded-full bg-primary/40 animate-bounce [animation-duration:0.8s]"></span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary/40 animate-bounce animation-duration-[0.8s] [animation-delay:-0.3s]"></span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary/40 animate-bounce animation-duration-[0.8s] [animation-delay:-0.15s]"></span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary/40 animate-bounce animation-duration-[0.8s]"></span>
                 </div>
             )}
 
@@ -868,9 +868,14 @@ export default function ExecutionConsole() {
                             setMessages((prev) => {
                                 const lastMsg = prev[prev.length - 1];
                                 if (lastMsg && lastMsg.role === "assistant") {
-                                    return prev.map(msg => 
-                                        msg.id === lastMsg.id 
-                                            ? { ...msg, content: (msg.content || "") + `\n\n**[系统异常]** ${event.content}\n` } 
+                                    return prev.map((msg) =>
+                                        msg.id === lastMsg.id
+                                            ? {
+                                                  ...msg,
+                                                  content:
+                                                      (msg.content || "") +
+                                                      `\n\n**[系统异常]** ${event.content}\n`,
+                                              }
                                             : msg
                                     );
                                 }

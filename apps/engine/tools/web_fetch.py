@@ -24,7 +24,3 @@ async def web_fetch(url: str) -> Dict[str, Any]:
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-async def run(params: Dict[str, Any]) -> Dict[str, Any]:
-    """兼容旧版调用。"""
-    return await web_fetch(**params)
-

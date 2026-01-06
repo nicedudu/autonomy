@@ -1,5 +1,7 @@
-from typing import Dict, Any
+from typing import Any, Dict
+
 from services.base import BaseService
+
 
 class AgentService(BaseService):
     """
@@ -13,7 +15,7 @@ class AgentService(BaseService):
         response = self.supabase.table("agents").select(
             "*, llm_providers(*)"
         ).eq("identifier", identifier).execute()
-        
+
         if not response.data:
             raise RuntimeError(f"未找到智能体: {identifier}")
         return response.data[0]
@@ -23,8 +25,9 @@ class AgentService(BaseService):
         获取指定智能体的提示词模板内容。
         """
         column = "system_prompt" if is_system else "user_prompt"
-        response = self.supabase.table("agents").select(column).eq("identifier", agent_identifier).execute()
-        
+        response = self.supabase.table("agents").select(
+            column).eq("identifier", agent_identifier).execute()
+
         if not response.data or not response.data[0].get(column):
             raise RuntimeError(f"未找到智能体提示词模板: {agent_identifier}")
         return response.data[0].get(column)

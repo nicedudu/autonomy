@@ -1,32 +1,40 @@
-# Autonomy 项目演进记录 (Moment) - 2026-01-03
+# Autonomy 项目演进记录 (Moment) - 2026-01-06
 
-## 1. 架构加固：生产级通用智能体底座 (Industrial Stabilization)
-### 1.1 协议标准化与去黑盒化
-- **SDK 标准化**：彻底重构 `LLMFactory`，全面对齐 OpenAI 标准 SDK 调用规范，消除了由于复杂的参数合并导致的 `temperature` 多次赋值冲突。
-- **开发透视日志**：实现了全链路执行流可视化。控制台现在实时展示 **LLM Request Context**、**原始 Token 流**、**工具入参 (Args)** 以及 **物理出参 (Data)**，彻底解决了开发阶段的“黑盒”调试困境。
-- **鲁棒性防御**：在 `LLMFactory` 和 `Orchestrator` 中引入了全局异常屏障，能够优雅处理 **421 (安全风控拦截)**、**400 (请求参数错误)** 等生产环境异常，防止 ASGI 容器崩溃。
+## 1. 架构飞跃：Engine V2.0 生产级内核重构 (Architecture Leap)
 
-### 1.2 Agent Skill 体系深度进化
-- **对齐 OpenAI Codex 标准**：将技能加载逻辑重构为基于目录的 **`SKILL.md`** 架构。实现元数据（YAML）与执行手册（Markdown 指令）的物理分离。
-- **渐进式披露 (Progressive Disclosure)**：引入了技能的“按需加载”灵魂机制。系统初始仅注入轻量级的“能力索引”，只有当智能体在 `<thought>` 中明确提及某技能 ID 时，系统才会动态将完整的 SOP 手册注入上下文，极大地提升了 Token 效率和长任务注意力。
+### 1.1 灵魂与大脑的科学解耦 (Soul-Brain Separation)
+- **逻辑资产化**：将智能体的“身份（Identity）”与“灵魂指令（Instructions）”固化在代码中（`core/registry/internal.py`），确立了 Agent 的行为主权，防止由于 Admin 误操作导致的逻辑崩溃。
+- **算力调度外部化**：将供应商、模型路由及经济策略完全下放到 Supabase 数据库管理。实现了“逻辑归代码、算力归 Admin”的工业级设计，支持零发布、秒级动态切换模型。
 
-### 1.3 核心基础设施固化
-- **TextProcessor (文本工厂)**：抽象出了通用的文本分块与处理引擎。支持基于 **RecursiveCharacterSplitter** 的语义切分及 **Map-Reduce** 并发摘要逻辑，使系统具备了处理超长网页和文档的底座能力。
-- **契约化工具定义**：建立了统一的 `tools.json` 契约库。实现了“能力定义”与“代码实现”的彻底解耦，使工具描述具备了极高的机器可读性。
+### 1.2 强契约协议化执行 (Protocol-First Architecture)
+- **XML 标签契约**：彻底废弃模糊的正则匹配，强制执行严格的 XML 通讯协议（`<thought>`, `<action>`, `<call>`, `<reflection>`, `<conclusion>`）。极大提高了复杂上下文下的指令遵循度和解析稳定性。
+- **参数标准化**：全链路统一使用 `arguments` 契约，彻底清理了历史遗留的 `params` 等非标字段，对齐 OpenAI/MCP 行业基准。
+
+### 1.3 状态不可变性与 Reducer 模式
+- **SSOT (唯一事实源)**：重构 `AgentState` 为单向数据流模型。所有状态变更必须通过 `StateUpdate` 进行显式合并，实现了任务执行过程的“可回溯性”和“并发安全”。
+- **Artifacts 剥离机制**：引入了侧边存储缓冲区，将长数据块从对话历史（History）中剥离，显著降低了 Token 损耗并延长了有效 Context 寿命。
+
+### 1.4 洋葱模型中间件与上下文工程
+- **Jinja2 动态渲染**：引入 Jinja2 作为核心提示词编译器，支持逻辑分支注入（如：`{% if skill_docs %}`），实现了极高信息密度的动态上下文组装。
+- **智能修剪 (Context Pruning)**：实现了基于滑动窗口的 `ContextManagerMiddleware`，能够根据任务进度自动修剪冗余的观察过程，解决了 Agent 系统普遍存在的“注意力稀释”难题。
+
+### 1.5 自愈协作协议 (Self-Healing & Handoff)
+- **Handoff 移交机制**：重构 `Orchestrator`，实现了标准化的 A2A 状态移交协议。支持 Agent 间的控制权流转与任务递归拆解。
+- **错误自愈循环**：将工具错误（TypeError, RuntimeError）结构化为 XML 观测值反馈给模型，触发其自我反思（Reflection）与参数修正，极大提升了长链路任务的成功率。
 
 ---
 
-## 2. 认知闭环与逻辑硬化
-- **“宪法级”提示词重构**：融合 Manus 和 Claude Code 的精髓，建立了 **`Autonomy Intelligence Constitution`**。确立了“行动优先”、“极简回复”、“事实主权”及“进度账本”四大核心 Mandates。
-- **去人格化治理**：移除了所有 Agent 的社交昵称（如 Mike），将其重定义为功能性的 **Orchestrator/Node**，并强化了针对“简单任务”自动跳过 `plan` 环节的极简逻辑。
-- **时空对齐**：为 Agent 注入了动态系统时间感知，确保搜索和调研任务具备精确的 2026 年时效性参考。
+## 2. 工程规范与清理
+- **零依赖治理**：彻底移除了脆弱的 YAML 文件注册表模式，消除了多头管理隐患。
+- **目录纯净化**：清理了 `core/planning`, `core/runtime` 等 5 个冗余层级，实现扁平化、高内聚的目录结构。
+- **中文专业化**：所有系统内置指令及代码注释全面切换为严谨的中文化表述，更符合本土生产环境语境。
 
 ---
 
 ## 3. 待办事项 (Next Steps)
-- [ ] **多模态感知**：集成 Web Vision 技能，支持 Agent 对网页截图进行视觉分析。
-- [ ] **复杂技能沙盒**：实现基于 Docker 或 WebAssembly 的安全代码执行环境。
-- [ ] **组织智力演进**：实现技能的“自动发现与固化”逻辑，允许 Agent 跨会话沉淀经验。
+- [ ] **State Persistence (Checkpoints)**：实现状态的持久化序列化，支持 Agent 任务的跨 Session 挂起与断点续传。
+- [ ] **MCP Adapter**：开发 Model Context Protocol 适配器，支持第三方 MCP Server 的即插即用。
+- [ ] **Cost Audit Middleware**：实现基于 Token 真实消耗的实时计费与预算拦截。
 
 ---
-*记录人：Gemini CLI Agent (Nexus V4 Architecture Core)*
+*记录人：Autonomy 核心研发智能体 (V2.0 Engine Architect)*
