@@ -1,73 +1,41 @@
 import re
-import json
-from typing import List, Dict, Any, Optional
-from core.protocol.schema import ProtocolResponse, ProtocolAction, ProtocolCall
+from core.utils.json_utils import extract_json
+from .schema import ProtocolResponse
+
+class ProtocolParseError(Exception):
+    """协议解析异常：载荷格式或 Schema 契约校验失败。"""
+    pass
 
 class ProtocolParser:
-    """
-    协议解析器。
-    采用正则与状态机结合的方式，从 LLM 响应中提取结构化 XML 块。
+    """协议解析引擎。
+    
+    执行推理文本向执行契约的结构化转换。
     """
 
     @staticmethod
     def parse(text: str) -> ProtocolResponse:
+        """解析协议载荷并执行契约校验。
+        
+        Args:
+            text: 原始模型输出文本。
+            
+        Returns:
+            ProtocolResponse: 结构化协议对象。
+            
+        Raises:
+            ProtocolParseError: 格式不可解析或 Schema 校验不通过。
         """
-        全量解析 LLM 输出文本。
-        """
-        response = ProtocolResponse()
+        data = extract_json(text)
+        
+        if not isinstance(data, dict):
+            raise ProtocolParseError("载荷缺失有效协议字典结构")
 
-        # 1. 提取思考内容 (Thought)
-        response.thought = ProtocolParser._extract_tag(text, "thought")
-
-        # 2. 提取反思 (Reflection)
-        response.reflection = ProtocolParser._extract_tag(text, "reflection")
-
-        # 3. 提取结论 (Conclusion)
-        response.conclusion = ProtocolParser._extract_tag(text, "conclusion")
-
-        # 4. 解析行动 (Actions - JSON inside XML)
-        action_blocks = ProtocolParser._extract_all_tags(text, "action")
-        for block in action_blocks:
-            try:
-                data = json.loads(block.strip())
-                response.actions.append(ProtocolAction(
-                    tool_name=data.get("tool_name"),
-                    arguments=data.get("arguments", {})
-                ))
-            except json.JSONDecodeError:
-                pass
-
-        # 5. 解析协作 (Calls)
-        call_blocks = ProtocolParser._extract_all_tags(text, "call")
-        for block in call_blocks:
-            try:
-                data = json.loads(block.strip())
-                response.calls.append(ProtocolCall(
-                    target_id=data.get("target_id"),
-                    task=data.get("task"),
-                    context=data.get("context", {})
-                ))
-            except json.JSONDecodeError:
-                pass
-
-        return response
+        try:
+            return ProtocolResponse.model_validate(data)
+        except Exception as e:
+            raise ProtocolParseError(f"Schema 契约校验失败: {str(e)}")
 
     @staticmethod
-    def _extract_tag(text: str, tag: str) -> Optional[str]:
-        """提取单个标签的内容 (最新优先)"""
-        pattern = f"<{tag}>(.*?)</{tag}>"
-        match = re.search(pattern, text, re.DOTALL)
-        return match.group(1).strip() if match else None
-
-    @staticmethod
-    def _extract_all_tags(text: str, tag: str) -> List[str]:
-        """提取所有同名标签的内容"""
-        pattern = f"<{tag}>(.*?)</{tag}>"
-        return re.findall(pattern, text, re.DOTALL)
-
-    @staticmethod
-    def clean_text(text: str) -> str:
-        """
-        移除文本中的所有协议标签，只保留原始会话文本。
-        """
-        return re.sub(r"<(thought|action|call|reflection|plan|artifact)>.*?</\1>", "", text, flags=re.DOTALL).strip()
+    def strip_protocol(text: str) -> str:
+        """剥离 Markdown 协议代码块。"""
+        return re.sub(r"```json.*?```", "", text, flags=re.DOTALL).strip()

@@ -1,57 +1,64 @@
+"""
+模型配置解析器 (LLM Config Resolver)
+
+负责从持久化层（Supabase）检索并合成模型服务配置。
+实现算力路由与业务逻辑的完全解耦，确保执行单元获取真实、合法的服务凭证。
+"""
+
 from typing import Any, Dict, Optional
-from core.schema.models import AgentManifest, LLMConfig
 from services.settings import SettingsService
-from services.agent import AgentService
+from core.utils.logging import logger
 
 class LLMConfigResolver:
-    """
-    DB 驱动型配置解析器。
-    严格执行：所有模型、供应商和运行参数均来源于数据库。
-    """
+    """配置解析引擎。"""
 
     def __init__(self):
-        self.settings_svc = SettingsService()
-        self.agent_svc = AgentService()
+        self.settings_service = SettingsService()
 
-    def resolve(self, agent_id: str) -> LLMConfig:
+    def resolve(self, agent_id: str) -> Dict[str, Any]:
         """
-        合成 LLM 配置。
-        - 路由 (Provider/Model): 来源于数据库。
-        - 逻辑 (Temp/MaxTokens): 来源于代码定义。
-        """
-        # 1. 获取代码中的静态定义 (Soul)
-        from core.registry.internal import get_agent_definition
-        definition = get_agent_definition(agent_id)
-        if not definition:
-            raise ValueError(f"Agent '{agent_id}' is not defined in code.")
-
-        # 2. 获取全局系统设置 (兜底路由)
-        sys_settings = self.settings_svc.get_system_settings()
+        解析指定智能体对应的模型服务配置。
         
-        # 3. 获取 Admin 路由覆盖
-        db_agent_config = {}
+        解析逻辑：
+        1. 检索智能体专属调度表 (agents 表)。
+        2. 若无专属配置，则回退至系统全局默认配置 (system_settings 表)。
+        3. 关联检索供应商详细信息 (llm_providers 表)。
+        
+        Args:
+            agent_id: 智能体标识符。
+            
+        Returns:
+            Dict: 包含 provider_type, api_key, base_url, model 等的配置字典。
+        """
         try:
-            db_agent_config = self.agent_svc.get_agent_config(agent_id)
-        except Exception:
-            pass
+            # 1. 获取系统全量配置快照
+            settings = self.settings_service.get_system_settings()
+            
+            # 2. 尝试匹配智能体专属配置
+            agent_configs = settings.get("agent_configs", [])
+            target_config = next((ac for ac in agent_configs if ac["identifier"] == agent_id), None)
+            
+            if target_config:
+                provider_info = target_config.get("provider", {})
+                return {
+                    "provider_type": provider_info.get("type", "openai_compatible"),
+                    "api_key": provider_info.get("api_token"),
+                    "base_url": provider_info.get("api_base"),
+                    "model": target_config.get("model")
+                }
+            
+            # 3. 回退逻辑：使用全局默认配置
+            default_provider = settings.get("llm_providers", {})
+            return {
+                "provider_type": default_provider.get("type", "openai_compatible"),
+                "api_key": default_provider.get("api_token"),
+                "base_url": default_provider.get("api_base"),
+                "model": settings.get("default_model")
+            }
 
-        # 4. 确定供应商 (Admin 权限)
-        provider_data = db_agent_config.get("llm_providers") or sys_settings.get("llm_providers")
-        if isinstance(provider_data, list) and len(provider_data) > 0:
-            provider_data = provider_data[0]
-        
-        if not provider_data:
-            raise RuntimeError(f"Admin has not assigned any provider for Agent '{agent_id}'.")
+        except Exception as e:
+            logger.error(f"模型配置解析失败: {str(e)}", agent_id)
+            raise RuntimeError(f"无法为智能体 '{agent_id}' 合成模型配置。")
 
-        # 5. 确定模型 (Admin 权限)
-        model = db_agent_config.get("model") or sys_settings.get("default_model")
-
-        # 6. 合成配置 (融合路由与逻辑)
-        return LLMConfig(
-            provider=(provider_data.get("type") or "openai_compatible").lower(),
-            api_key=provider_data.get("api_token"),
-            base_url=provider_data.get("api_base"),
-            model=model,
-            temperature=definition.temperature, # 来源于代码
-            max_tokens=definition.max_tokens    # 来源于代码
-        )
+# 全局配置解析单例
+config_resolver = LLMConfigResolver()

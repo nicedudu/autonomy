@@ -1,5 +1,5 @@
 import uuid
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 
 from core.schema.models import Message
 
@@ -77,6 +77,22 @@ class CommunicationBus:
         if agent_id in self.agents:
             del self.agents[agent_id]
             print(f"通信中枢: 已注销Agent {agent_id}")
+
+    async def publish(self, event_type: str, payload: Any):
+        """发布异步事件到总线"""
+        # 如果定义了回调（通常是 UI 转发逻辑），则执行
+        if self.on_message_callback:
+            try:
+                # 为了保持与 api/main.py 兼容，我们将 event 包装成伪 Message
+                fake_msg = Message(
+                    sender="system",
+                    recipient="ui",
+                    subject=event_type,
+                    content=payload if isinstance(payload, dict) else {"data": payload}
+                )
+                self.on_message_callback(fake_msg)
+            except Exception as e:
+                print(f"通信中枢发布事件失败: {e}")
 
     async def send_message(self, message: Message) -> bool:
         """发送消息"""
@@ -216,7 +232,10 @@ class CommunicationBus:
             {
                 "agent_id": agent_id,
                 "name": agent.name,
-                "agent_type": agent.agent_type
+                "agent_type": getattr(agent, "agent_type", "unknown")
             }
             for agent_id, agent in self.agents.items()
         ]
+
+# 全局总线单例
+bus = CommunicationBus()

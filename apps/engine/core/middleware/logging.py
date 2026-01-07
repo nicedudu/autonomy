@@ -1,70 +1,48 @@
+"""
+基础日志中间件 (Logging Middleware)
+
+拦截推理链与工具链的生命周期，提供自动化的耗时统计、参数审计及异常堆栈记录。
+"""
+
+import time
 import json
-from datetime import datetime
-from typing import List, Dict, Any, Optional
-from core.middleware.base import AgentMiddleware
-from core.agent.state import AgentState, AgentMessage, MessageRole
+from typing import Any, Callable, Dict
+from core.middleware.base import BaseMiddleware
+from core.agent.state import AgentState
+from core.utils.logging import logger
 
-class LoggingMiddleware(AgentMiddleware):
+class LoggingMiddleware(BaseMiddleware):
     """
-    基础日志中间件 (Standard Output Logger).
-    负责将 Agent 的思考、行动与观测实时打印到控制台。
-    """
+    运行时审计拦截器。
     
-    def _print_header(self, title: str, color: str = "\033[94m"):
-        """打印带颜色的标题栏"""
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        reset = "\033[0m"
-        print(f"{color}{'='*10} {title} [{timestamp}] {'='*10}{reset}")
+    采用洋葱模型实现对执行节点的全景观测。
+    """
 
-    async def on_before_step(self, state: AgentState) -> Optional[Dict[str, Any]]:
-        self._print_header(f"STEP {state.step_count} START: {state.agent_id}", "\033[96m")
+    async def __call__(self, state: AgentState, next_call: Callable) -> Any:
+        """推理链审计"""
+        logger.info(f"==> 推理开始: {state.agent_id}", state.agent_id)
+        start_time = time.time()
+
+        try:
+            response = await next_call(state)
+            duration = time.time() - start_time
+            logger.success(f"<== 推理结束 | 耗时: {duration:.2f}s", state.agent_id)
+            return response
+        except Exception as e:
+            logger.error(f"推理异常: {str(e)}", state.agent_id)
+            raise e
+
+    async def on_tool(self, state: AgentState, action: Dict[str, Any], next_call: Callable) -> Any:
+        """工具链审计"""
+        tool_name = action.get("tool_name") or action.get("function") or "unknown"
+        logger.debug(f"工具调用 [{tool_name}] | 参数: {json.dumps(action.get('arguments', {}), ensure_ascii=False)}", state.agent_id)
         
-        # 打印最后一条用户或工具消息作为输入参考
-        if state.history:
-            last_msg = state.history[-1]
-            preview = last_msg.content[:200] + "..." if len(last_msg.content) > 200 else last_msg.content
-            print(f"📥 Last Msg ({last_msg.role}): {preview}")
-        
-        # [DEBUG] 打印编译后的系统提示词 (由 Runtime 在 state.metadata 中注入)
-        if "compiled_system_prompt" in state.metadata:
-            self._print_header("COMPILED SYSTEM PROMPT", "\033[90m") # Gray
-            print(state.metadata["compiled_system_prompt"])
-            self._print_header("END PROMPT", "\033[90m")
-
-        print("🤔 Thinking...")
-        return None
-
-    async def on_after_thought(self, state: AgentState, thought_msg: AgentMessage) -> Optional[Dict[str, Any]]:
-        print("\n" + "="*30)
-        print(f"💭 Thought: {thought_msg.content[:500]}...")
-        print("="*30 + "\n")
-        return None
-
-    async def on_before_action(self, state: AgentState, action: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        tool_name = action.get("tool_name", "unknown")
-        arguments = action.get("arguments", {})
-        self._print_header(f"TOOL CALL: {tool_name}", "\033[93m")
-        print(f"🛠️ Arguments: {json.dumps(arguments, ensure_ascii=False, indent=2)}")
-        return None
-
-    async def on_after_action(self, state: AgentState, action: Dict[str, Any], result: Any) -> Optional[Dict[str, Any]]:
-        tool_name = action.get("tool_name", "unknown")
-        # 判断结果状态
-        status = "success"
-        if isinstance(result, dict) and result.get("status") == "error":
-            status = "error"
-        elif hasattr(result, "status") and result.status == "error":
-            status = "error"
-
-        color = "\033[92m" if status == "success" else "\033[91m"
-        self._print_header(f"TOOL RESULT: {tool_name}", color)
-        
-        output_str = str(result)
-        if len(output_str) > 1000:
-             output_str = output_str[:1000] + f" ... [truncated]"
-        print(f"📤 Output: {output_str}")
-        return None
-
-    async def on_error(self, state: AgentState, error: Exception) -> None:
-        self._print_header(f"ERROR: {state.agent_id}", "\033[91m")
-        print(f"❌ Details: {str(error)}")
+        start_time = time.time()
+        try:
+            result = await next_call(state, action)
+            duration = time.time() - start_time
+            logger.success(f"工具返回 [{tool_name}] | 耗时: {duration:.2f}s", state.agent_id)
+            return result
+        except Exception as e:
+            logger.error(f"工具崩溃 [{tool_name}]: {str(e)}", state.agent_id)
+            raise e

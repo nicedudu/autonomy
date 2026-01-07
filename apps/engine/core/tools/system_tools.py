@@ -1,35 +1,37 @@
-from typing import Any, Dict
+"""
+系统级原子工具 (System Tools)
 
+提供由引擎内核直接驱动的基础能力，包括产物检索、委派反馈等。
+这些工具绕过物理文件系统，直接操作内存网关与总线。
+"""
+
+from typing import Any, Dict
+from core.agent.memory import memory_gateway
 from core.tools.base import BaseTool
 
-
-async def delegate_to_agent_func(target_agent_id: str, instruction: str, **kwargs) -> Dict[str, Any]:
-    """
-    将任务委派给另一个专家智能体。
-
-    target_agent_id: 目标智能体的 ID (如 'researcher', 'coder')
-    instruction: 明确的任务指令
-    """
-    # 这个函数在 Runtime 中被调用时，其实际效果是返回一个带有特殊标识的 Dict
-    # Runtime 会检测这个标识并将其转化为 A2A 调用
+async def read_artifact_func(session_id: str, artifact_id: str) -> Dict[str, Any]:
+    """从内存网关中检索指定产物的内容。"""
+    artifact = memory_gateway.retrieve(session_id, artifact_id)
+    if not artifact:
+        return {"status": "error", "message": f"未找到产物: {artifact_id}"}
+    
     return {
-        "__type__": "delegation_call",
-        "target_agent_id": target_agent_id,
-        "instruction": instruction,
-        "context": kwargs
+        "status": "success",
+        "id": artifact.id,
+        "type": artifact.type,
+        "content": artifact.content
     }
 
-# 实例化工具对象
-delegate_tool = BaseTool(
-    name="delegate_to_agent",
-    description="Delegate a sub-task to a specialist agent when you need expert help.",
+# 实例化系统工具
+read_artifact_tool = BaseTool(
+    name="read_artifact",
+    description="从共享内存中检索指派任务的背景数据或前序任务结果。",
     parameters={
         "type": "object",
         "properties": {
-            "target_agent_id": {"type": "string", "description": "The ID of the specialist agent."},
-            "instruction": {"type": "string", "description": "Clear and detailed task instructions for the agent."}
+            "artifact_id": {"type": "string", "description": "产物唯一引用 ID"}
         },
-        "required": ["target_agent_id", "instruction"]
+        "required": ["artifact_id"]
     },
-    func=delegate_to_agent_func
+    func=read_artifact_func
 )

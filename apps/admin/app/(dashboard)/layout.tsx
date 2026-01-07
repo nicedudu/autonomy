@@ -33,7 +33,7 @@ export default function DashboardLayout({
             {/* Primary Sidebar */}
             <aside className="w-[220px] flex flex-col bg-sidebar border-r border-sidebar-border shrink-0 relative z-50">
                 <div className="p-4 pt-6 flex-1 overflow-y-auto scrollbar-hide">
-                    <div className="flex items-center gap-2 mb-8 px-4">
+                    <div className="flex items-center gap-2 mb-8 px-0">
                         <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center text-primary-foreground font-black text-xl">
                             A
                         </div>

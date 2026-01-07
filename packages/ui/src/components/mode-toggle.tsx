@@ -32,8 +32,8 @@ export function ModeToggle() {
                     size="icon-sm"
                     className="cursor-pointer group"
                 >
-                    <Sun className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0 text-foreground group-hover:text-background" />
-                    <Moon className="h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100 absolute text-foreground group-hover:text-background" />
+                    <Sun className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0 text-muted-foreground group-hover:text-background" />
+                    <Moon className="h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100 absolute text-muted-foreground group-hover:text-background" />
                 </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent

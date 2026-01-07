@@ -4,7 +4,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from api.routes import agent, chat
 from api.utils import manager, emit_event
-from api.deps import orchestrator
+from api.deps import dispatcher
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -25,12 +25,12 @@ async def lifespan(app: FastAPI):
             pass
 
     # 绑定回调
-    orchestrator.bus.set_on_message_callback(bus_to_ui_callback)
+    dispatcher.bus.set_on_message_callback(bus_to_ui_callback)
     
     yield
     
     # --- 关闭逻辑 ---
-    orchestrator.bus.set_on_message_callback(None)
+    dispatcher.bus.set_on_message_callback(None)
 
 def create_app() -> FastAPI:
     """

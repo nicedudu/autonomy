@@ -256,7 +256,7 @@ export default function AdminAgentsThemeAligned() {
                                         className={
                                             selectedAgent === "general_config"
                                                 ? "text-primary"
-                                                : "text-foreground"
+                                                : "text-muted-foreground"
                                         }
                                     />
                                 </Button>

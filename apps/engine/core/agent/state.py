@@ -1,8 +1,11 @@
 from __future__ import annotations
-from enum import Enum
-from typing import Any, Dict, List, Optional, Union
-from pydantic import BaseModel, Field
+
 import time
+from enum import Enum
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, Field
+
 
 class AgentStatus(str, Enum):
     IDLE = "idle"
@@ -12,11 +15,13 @@ class AgentStatus(str, Enum):
     COMPLETED = "completed"
     FAILED = "failed"
 
+
 class MessageRole(str, Enum):
     SYSTEM = "system"
     USER = "user"
     ASSISTANT = "assistant"
     TOOL = "tool"
+
 
 class AgentMessage(BaseModel):
     role: MessageRole
@@ -24,6 +29,7 @@ class AgentMessage(BaseModel):
     tool_call_id: Optional[str] = None
     timestamp: float = Field(default_factory=time.time)
     metadata: Dict[str, Any] = Field(default_factory=dict)
+
 
 class StateUpdate(BaseModel):
     """
@@ -37,6 +43,7 @@ class StateUpdate(BaseModel):
     usage_delta: Dict[str, int] = Field(default_factory=dict)
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
+
 class AgentState(BaseModel):
     """
     智能体运行时状态 (唯一事实源)。
@@ -45,19 +52,20 @@ class AgentState(BaseModel):
     agent_id: str
     session_id: str
     status: AgentStatus = AgentStatus.IDLE
-    
+
     # 核心对话流 (压缩后的，不包含原始长数据)
     history: List[AgentMessage] = Field(default_factory=list)
-    
+
     # 侧边缓冲区：存储超长数据块 (Artifacts)
     artifacts: Dict[str, Any] = Field(default_factory=dict)
-    
+
     # 全局共享上下文变量
     context: Dict[str, Any] = Field(default_factory=dict)
-    
+
     # 资源消耗统计
-    usage: Dict[str, int] = Field(default_factory=lambda: {"prompt_tokens": 0, "completion_tokens": 0, "tool_calls": 0})
-    
+    usage: Dict[str, int] = Field(default_factory=lambda: {
+                                  "prompt_tokens": 0, "completion_tokens": 0, "tool_calls": 0})
+
     # 系统元数据 (Internal only)
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
@@ -76,23 +84,23 @@ class AgentState(BaseModel):
         """
         if update.status:
             self.status = update.status
-        
+
         # 合并上下文变量
         self.context.update(update.context_updates)
-        
+
         # 合并元数据
         self.metadata.update(update.metadata)
-        
+
         # 处理特殊的 History 替换逻辑 (例如剪枝中间件建议的替换)
         if "new_history" in update.metadata:
             self.history = update.metadata["new_history"]
-        
+
         # 追加新消息
         self.history.extend(update.new_messages)
-        
+
         # 合并 Artifacts
         self.artifacts.update(update.new_artifacts)
-        
+
         # 累加资源消耗
         for key, value in update.usage_delta.items():
             self.usage[key] = self.usage.get(key, 0) + value

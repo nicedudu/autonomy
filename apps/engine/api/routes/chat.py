@@ -1,10 +1,11 @@
 import json
+import uuid
 from typing import Any, Dict
 
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
-from api.deps import orchestrator
+from api.deps import dispatcher
 
 router = APIRouter(prefix="/api/chat", tags=["Chat"])
 
@@ -13,41 +14,42 @@ router = APIRouter(prefix="/api/chat", tags=["Chat"])
 async def summarize_chat(request: Dict[str, Any]):
     """
     根据用户输入生成简短的会话标题。
-    利用 LLM 将用户意图浓缩为 10 个词以内的总结。
+    利用新版 llm_manager 执行高效总结。
     """
     content = request.get("content", "")
     if not content:
         return {"title": "新会话"}
 
     try:
-        from core.llm.service import LLMService
-        from core.schema.models import LLMConfig
+        from core.llm.manager import llm_manager
+        from core.llm.schema import LLMMessage, LLMRole
         from services.settings import SettingsService
 
-        # 获取默认配置
+        # 获取系统配置中的模型路由
         settings = SettingsService().get_system_settings()
-        config = LLMConfig(
-            provider="openai_compatible", # 假设默认
-            model=settings.get("default_model", "gpt-4o"),
-            api_key=settings.get("llm_providers", {}).get("api_token"),
-            base_url=settings.get("llm_providers", {}).get("api_base")
+        providers = settings.get("llm_providers", {})
+        
+        # 实例化新版模型客户端
+        client = llm_manager.create_client(
+            provider_type="openai_compatible", # 默认兼容协议
+            api_key=providers.get("api_token", "sk-placeholder"),
+            base_url=providers.get("api_base", "https://api.placeholder.com")
         )
 
-        llm_service = LLMService()
         messages = [
-            {"role": "system", "content": "请将用户的输入总结为一个简短的标题（10字以内）。仅返回标题文本。"},
-            {"role": "user", "content": content}
+            LLMMessage(role=LLMRole.SYSTEM, content="请将用户的输入总结为一个简短的标题（10字以内）。仅返回标题文本，不要包含引号。"),
+            LLMMessage(role=LLMRole.USER, content=content)
         ]
         
-        response = llm_service.call(config, messages)
-        # ProviderResponse.output 是一个包含 Dict 的 List
-        if response.output and "content" in response.output[0]:
-            title = response.output[0]["content"].strip().strip('"').strip("'")
-        else:
-            title = "新会话"
-        return {"title": title}
+        # 执行全量生成
+        response = await client.generate(
+            messages=messages, 
+            model=settings.get("default_model", "qwen-max")
+        )
+        
+        return {"title": response.content.strip()}
     except Exception as e:
-        print(f"Summarize failed: {e}")
+        print(f"Summarize failed via V3 core: {e}")
         return {"title": "新会话"}
 
 
@@ -59,9 +61,10 @@ async def chat_stream(request: Dict[str, Any]):
     """
     agent_id = request.get("agent_id", "primary_agent")
     content = request.get("content", "")
+    session_id = request.get("session_id", str(uuid.uuid4()))
 
     async def event_generator():
-        async for event in orchestrator.dispatch(agent_id, content):
+        async for event in dispatcher.execute_task(agent_id, content, session_id):
             yield json.dumps(event) + "\n"
 
     return StreamingResponse(event_generator(), media_type="application/x-ndjson")

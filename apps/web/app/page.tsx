@@ -347,69 +347,39 @@ const AssistantMessageItem = ({
     const [isHovered, setIsHovered] = useState(false);
 
     const content = msg.content || "";
-
-    // Tags Parsing Logic
-    const parseAllTags = (startTag: string, endTag: string) => {
-        const results = [];
-        let cursor = 0;
-        while (true) {
-            const startIdx = content.indexOf(startTag, cursor);
-            if (startIdx === -1) break;
-            const endIdx = content.indexOf(endTag, startIdx + startTag.length);
-            results.push({
-                content:
-                    endIdx !== -1
-                        ? content.substring(startIdx + startTag.length, endIdx)
-                        : content.substring(startIdx + startTag.length),
-                isClosed: endIdx !== -1,
-            });
-            if (endIdx === -1) break;
-            cursor = endIdx + endTag.length;
-        }
-        return results;
-    };
-
-    const allThoughts = parseAllTags("<thought>", "</thought>");
-    const allPlans = parseAllTags("<plan>", "</plan>");
-    const thought = allThoughts[allThoughts.length - 1] || null;
-    const plan = allPlans[allPlans.length - 1] || null;
     const isStreaming = isLatest && isLoading;
 
-    let mainContent = content;
-    const blocksToHide = [
-        { start: "<thought>", end: "</thought>" },
-        { start: "<plan>", end: "</plan>" },
-        { start: "<action>", end: "</action>" },
-        { start: "<status>", end: "</status>" },
-    ];
+    // --- JSON Protocol Parsing Logic ---
+    let thoughtContent = "";
+    let conclusionContent = "";
+    let isThoughtClosed = false;
+    let mainDisplayContent = content;
 
-    // --- 预防流式闪烁：移除所有未闭合的标签及其内容 ---
-    blocksToHide.forEach((block) => {
-        while (true) {
-            const s = mainContent.indexOf(block.start);
-            if (s === -1) break;
-            const e = mainContent.indexOf(block.end, s);
-            if (e !== -1) {
-                // 完整块：直接切除
-                mainContent =
-                    mainContent.substring(0, s) +
-                    mainContent.substring(e + block.end.length);
-            } else {
-                // 未闭合块：从开始标签位置截断后续所有内容，防止泄露
-                mainContent = mainContent.substring(0, s);
-                break;
-            }
+    // 尝试提取 JSON 块内容
+    const jsonMatch = content.match(/```json\s*([\s\S]*?)(?:```|$)/);
+    if (jsonMatch) {
+        const rawJson = jsonMatch[1].strip ? jsonMatch[1].trim() : jsonMatch[1];
+        
+        // 尝试解析 JSON (容错处理)
+        try {
+            // 使用简易正则提取字段，支持流式未闭合状态
+            const tMatch = rawJson.match(/"thought":\s*"([\s\S]*?)(?:"|,|$)/);
+            const cMatch = rawJson.match(/"conclusion":\s*"([\s\S]*?)(?:"|,|$)/);
+            
+            if (tMatch) thoughtContent = tMatch[1].replace(/\\n/g, '\n');
+            if (cMatch) conclusionContent = cMatch[1].replace(/\\n/g, '\n');
+            
+            isThoughtClosed = content.includes('"}') || content.includes('",');
+        } catch (e) {
+            // 解析失败时保持现状
         }
-    });
 
-    // --- 极致防闪烁：处理末尾可能正在生成的标签前缀 (如 '<p', '</t') ---
-    if (isStreaming) {
-        mainContent = mainContent.replace(/<[a-zA-Z0-9\/]*$/g, "");
+        // 核心修复：从 Markdown 渲染内容中剔除 JSON 块
+        mainDisplayContent = content.replace(/```json[\s\S]*?(?:```|$)/g, "").trim();
     }
 
-    mainContent = mainContent
-        .replace(/<call>\s*(@\w+)\s*(.*?)\s*<\/call>/g, "\n\n> **$1** $2\n\n")
-        .trim();
+    // 如果有结论，优先显示结论作为正文
+    const finalDisplay = conclusionContent || mainDisplayContent;
 
     return (
         <div className="space-y-3 w-full min-w-0 overflow-hidden">
@@ -443,7 +413,7 @@ const AssistantMessageItem = ({
             </div>
 
             {/* --- 前置等待动画 --- */}
-            {isStreaming && !mainContent && !thought && !plan && (
+            {isStreaming && !finalDisplay && !thoughtContent && (
                 <div className="flex gap-1.5 items-center p-2 animate-in fade-in duration-300">
                     <span className="w-1.5 h-1.5 rounded-full bg-primary/40 animate-bounce animation-duration-[0.8s] [animation-delay:-0.3s]"></span>
                     <span className="w-1.5 h-1.5 rounded-full bg-primary/40 animate-bounce animation-duration-[0.8s] [animation-delay:-0.15s]"></span>
@@ -451,7 +421,7 @@ const AssistantMessageItem = ({
                 </div>
             )}
 
-            {thought && (
+            {thoughtContent && (
                 <div
                     className={`rounded-xl overflow-hidden transition-all w-full min-w-0 ${
                         isThinkingExpanded
@@ -465,7 +435,7 @@ const AssistantMessageItem = ({
                         }
                         onMouseEnter={() => setIsHovered(true)}
                         onMouseLeave={() => setIsHovered(false)}
-                        className="flex items-center gap-2 px-1.5 py-1.5 hover:text-foreground/80 transition-colors text-[10px] font-bold text-muted-foreground/70 uppercase tracking-tight"
+                        className="flex items-center gap-2 px-1.5 py-1.5 hover:text-foreground/80 transition-colors text-[10px] font-bold text-muted-foreground/70 tracking-tight"
                     >
                         <div className="w-4 h-4 flex items-center justify-center">
                             {isHovered ? (
@@ -482,33 +452,24 @@ const AssistantMessageItem = ({
                             )}
                         </div>
                         <span>
-                            {thought.isClosed ? "深度思考" : "深度思考中..."}
+                            {isThoughtClosed ? "深度思考" : "深度思考中..."}
                         </span>
                     </button>
                     {isThinkingExpanded && (
-                        <div className="px-4 pb-3 text-xs leading-relaxed text-muted-foreground/60 italic font-medium border-t border-border/20 pt-2 break-all">
-                            <ReactMarkdown
-                                remarkPlugins={[remarkGfm]}
-                                components={MarkdownComponents}
-                            >
-                                {thought.content || "正在审视上下文..."}
-                            </ReactMarkdown>
+                        <div className="px-4 pb-3 text-xs leading-relaxed text-muted-foreground/60 italic font-medium border-t border-border/20 pt-2 break-all whitespace-pre-wrap">
+                            {thoughtContent}
                         </div>
                     )}
                 </div>
             )}
 
-            {plan && (
-                <PlanTodoView content={plan.content} isClosed={plan.isClosed} />
-            )}
-
-            {mainContent && (
+            {finalDisplay && (
                 <div className="text-sm leading-relaxed text-foreground/90 font-medium relative [&_p]:mb-6 last:[&_p]:mb-0 break-all w-full min-w-0">
                     <ReactMarkdown
                         remarkPlugins={[remarkGfm]}
                         components={MarkdownComponents}
                     >
-                        {mainContent}
+                        {finalDisplay}
                     </ReactMarkdown>
                 </div>
             )}
@@ -516,7 +477,7 @@ const AssistantMessageItem = ({
             {isLatest && isLoading && msg.status && (
                 <div className="flex items-center gap-2 px-2 py-1.5 bg-primary/5 border border-primary/10 rounded-lg w-fit animate-in fade-in zoom-in-95 mt-2">
                     <Zap size={10} className="text-primary animate-pulse" />
-                    <span className="text-[10px] font-bold text-primary/70 uppercase tracking-wider">
+                    <span className="text-[10px] font-bold text-primary/70 tracking-wider">
                         {msg.status}
                     </span>
                 </div>
@@ -948,10 +909,10 @@ export default function ExecutionConsole() {
     return (
         <div className="flex h-screen bg-background text-foreground overflow-hidden font-sans relative">
             <aside
-                className={`flex flex-col z-50 shrink-0 transition-all duration-300 ease-in-out bg-sidebar relative ${
+                className={`flex flex-col z-50 shrink-0 transition-all duration-300 ease-in-out bg-sidebar relative overflow-hidden ${
                     isSidebarOpen
                         ? "w-[240px] border-r border-sidebar-border/40"
-                        : "w-0 border-none"
+                        : "w-0"
                 }`}
             >
                 <div className="w-[240px] flex flex-col h-full">
@@ -960,7 +921,7 @@ export default function ExecutionConsole() {
                             <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center text-primary-foreground font-black text-xl">
                                 A
                             </div>
-                            <span className="font-black text-sm uppercase">
+                            <span className="font-black text-sm">
                                 Autonomy
                             </span>
                         </div>

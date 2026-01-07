@@ -1,91 +1,74 @@
-from typing import AsyncGenerator, Dict, List, Optional
+from typing import AsyncGenerator, List, Dict, Any, Optional
+from anthropic import AsyncAnthropic
+from ..base import BaseLLMProvider
+from ..schema import LLMMessage, LLMResponse, LLMUsage, LLMRole
 
-from anthropic import Anthropic, AsyncAnthropic
-from core.llm.providers.base import LLMProviderAdapter, ProviderResponse, ProviderUsage
+class AnthropicProvider(BaseLLMProvider):
+    """Anthropic Messages API 协议适配器。"""
 
+    def __init__(self, api_key: str, base_url: str, **kwargs):
+        super().__init__(api_key, base_url, **kwargs)
+        self.client = AsyncAnthropic(api_key=api_key, base_url=base_url)
 
-class AnthropicAdapter(LLMProviderAdapter):
-    """Anthropic Messages API 协议驱动。"""
-
-    def __init__(self, api_key: str, base_url: str):
-        self.client = Anthropic(api_key=api_key, base_url=base_url)
-        self.async_client = AsyncAnthropic(api_key=api_key, base_url=base_url)
-
-    def _extract_messages(self, messages: List[Dict[str, str]]) -> tuple[Optional[str], List[Dict[str, str]]]:
-        """分离系统指令与对话消息。"""
-        system_instruction = None
-        filtered_messages = []
-
-        for msg in messages:
-            if msg["role"] == "system":
-                system_instruction = msg["content"]
+    def _prepare_payload(self, messages: List[LLMMessage], system: Optional[str] = None) -> Dict[str, Any]:
+        """准备 Anthropic 原生载荷，合并系统提示词。"""
+        system_content = system or ""
+        native_msgs = []
+        
+        for m in messages:
+            if m.role == LLMRole.SYSTEM:
+                system_content += "\n" + m.content
             else:
-                role = "assistant" if msg["role"] in [
-                    "model", "assistant", "agent"] else "user"
-                filtered_messages.append(
-                    {"role": role, "content": msg["content"]})
+                role = "assistant" if m.role in [LLMRole.ASSISTANT, LLMRole.TOOL] else "user"
+                if native_msgs and native_msgs[-1]["role"] == role:
+                    native_msgs[-1]["content"] += "\n\n" + m.content
+                else:
+                    native_msgs.append({"role": role, "content": m.content})
+        
+        return {
+            "system": system_content.strip() if system_content else None,
+            "messages": native_msgs
+        }
 
-        return system_instruction, filtered_messages
-
-    async def stream(
-        self,
-        model: str,
-        messages: List[Dict[str, str]],
-        **kwargs
-    ) -> AsyncGenerator[str, None]:
-        """异步流式响应实现。直接透传外部校验后的推理参数。"""
-        system, user_msgs = self._extract_messages(messages)
-
-        async with self.async_client.messages.stream(
+    async def generate(self, messages: List[LLMMessage], system: Optional[str] = None, **kwargs) -> LLMResponse:
+        model = kwargs.pop("model", self.config.get("model"))
+        if not model:
+            raise ValueError(f"{self.__class__.__name__} 缺失 model 参数")
+            
+        payload = self._prepare_payload(messages, system)
+        response = await self.client.messages.create(
             model=model,
-            system=system,
-            messages=user_msgs,
+            max_tokens=kwargs.pop("max_tokens", 4096),
+            stream=False,
+            **payload,
+            **kwargs
+        )
+
+        content = "".join([block.text for block in response.content if hasattr(block, "text")])
+        
+        return LLMResponse(
+            content=content,
+            model=response.model,
+            usage=LLMUsage(
+                prompt_tokens=response.usage.input_tokens,
+                completion_tokens=response.usage.output_tokens,
+                total_tokens=response.usage.input_tokens + response.usage.output_tokens
+            ),
+            finish_reason=response.stop_reason,
+            raw=response
+        )
+
+    async def stream(self, messages: List[LLMMessage], system: Optional[str] = None, **kwargs) -> AsyncGenerator[str, None]:
+        model = kwargs.pop("model", self.config.get("model"))
+        if not model:
+            raise ValueError(f"{self.__class__.__name__} 缺失 model 参数")
+            
+        payload = self._prepare_payload(messages, system)
+        async with self.client.messages.stream(
+            model=model,
+            max_tokens=kwargs.pop("max_tokens", 4096),
+            **payload,
             **kwargs
         ) as stream:
             async for text in stream.text_stream:
                 yield text
-
-    def call(
-        self,
-        model: str,
-        messages: List[Dict[str, str]],
-        **kwargs
-    ) -> ProviderResponse:
-        """同步阻塞调用实现。"""
-        system, user_msgs = self._extract_messages(messages)
-
-        res = self.client.messages.create(
-            model=model,
-            system=system,
-            messages=user_msgs,
-            **kwargs
-        )
-
-        output_items = []
-        for content_block in res.content:
-            if content_block.type == "text":
-                output_items.append({
-                    "content": content_block.text,
-                    "role": res.role
-                })
-            elif content_block.type == "tool_use":
-                output_items.append({
-                    "type": "tool_use",
-                    "id": content_block.id,
-                    "name": content_block.name,
-                    "input": content_block.input
-                })
-
-        usage = ProviderUsage(
-            input_tokens=res.usage.input_tokens,
-            output_tokens=res.usage.output_tokens,
-            total_tokens=res.usage.input_tokens + res.usage.output_tokens
-        )
-
-        return ProviderResponse(
-            id=res.id,
-            model=model,
-            output=output_items,
-            usage=usage,
-            finish_reason=res.stop_reason
-        )

@@ -1,20 +1,18 @@
 from tools.web_search import web_search
 from tools.web_fetch import web_fetch
 from tools.planning import planning
-from tools.python_executor import python_execute
 from tools.file_ops import list_files, read_file, write_file
-from tools.terminal import terminal_execute
+from core.tools.system_tools import read_artifact_tool
 
-# 核心工具原始列表 (被 @tool 装饰的函数)
+# 核心工具原始列表 (已移除高危的 python_execute 和 terminal_execute)
 CORE_TOOLS_RAW = [
     web_search,
     web_fetch,
     planning,
-    python_execute,
     list_files,
     read_file,
     write_file,
-    terminal_execute
+    read_artifact_tool
 ]
 
 # 标准化提取 BaseTool 对象
