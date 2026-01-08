@@ -1,7 +1,6 @@
-from typing import Any, Callable, Dict, Optional
-
+from typing import Any, Callable, Dict, Optional, TypeVar, cast
+import functools
 from pydantic import BaseModel
-
 
 class ToolMetadata(BaseModel):
     """工具元数据模型"""
@@ -10,13 +9,11 @@ class ToolMetadata(BaseModel):
     parameters: Dict[str, Any]
     strict: bool = True
 
-
 class ToolResult(BaseModel):
     """工具执行结果模型"""
     status: str  # "success" or "error"
     output: Any
     error: Optional[str] = None
-
 
 class BaseTool:
     """
@@ -53,3 +50,33 @@ class BaseTool:
                 "strict": True
             }
         }
+
+F = TypeVar("F", bound=Callable[..., Any])
+
+def tool(
+    name: str,
+    description: str,
+    parameters: Dict[str, Any]
+) -> Callable[[F], F]:
+    """
+    生产级工具装饰器。
+    
+    将异步/同步函数封装为统一的 BaseTool 实例，并挂载元数据。
+    """
+    def decorator(func: F) -> F:
+        # 创建工具实例
+        instance = BaseTool(
+            name=name,
+            description=description,
+            parameters=parameters,
+            func=func
+        )
+        # 将实例挂载到原函数上，方便注册中心扫描提取
+        setattr(func, "__tool__", instance)
+        
+        @functools.wraps(func)
+        async def wrapper(*args, **kwargs):
+            return await instance.execute(*args, **kwargs)
+            
+        return cast(F, wrapper)
+    return decorator

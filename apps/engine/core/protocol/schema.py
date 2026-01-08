@@ -4,8 +4,13 @@
 定义执行引擎解析后的标准化组件模型。
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, Field
+
+class PlanStep(BaseModel):
+    """任务计划步骤"""
+    step: str = Field(..., description="步骤描述")
+    state: Literal["no_started", "in_progress", "completed", "blocked"] = Field(..., description="步骤状态")
 
 class ProtocolAction(BaseModel):
     """工具调用组件：映射至行业标准 tool_calls 结构。"""
@@ -23,6 +28,8 @@ class ProtocolCall(BaseModel):
 class ProtocolResponse(BaseModel):
     """全量协议载荷：模型产出的结构化指令块。"""
     thought: Optional[str] = None
-    tool_calls: List[ProtocolAction] = Field(default_factory=list)
-    calls: List[ProtocolCall] = Field(default_factory=list)
+    content: Optional[str] = None  # 用户交互文本
+    plan: List[PlanStep] = Field(default_factory=list)
+    tool_calls: List[ProtocolAction] = Field(default_factory=list) # 这里的 tool_calls 实际上可能对应 <calls> 中的工具调用，需统一
+    calls: List[ProtocolCall] = Field(default_factory=list) # 代理委派
     conclusion: Optional[str] = None

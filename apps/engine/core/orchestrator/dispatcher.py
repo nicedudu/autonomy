@@ -1,17 +1,23 @@
+"""
+任务编排调度中枢 (Dispatcher V3.5)
+
+职责：管理分布式任务的扇出 (Fan-out) 与扇入 (Fan-in)。
+核心机制：
+1. 实现子任务的并发隔离执行。
+2. 汇聚并冒泡所有子节点的实时事件流。
+3. 确保子任务结论的完整性捕获。
+"""
+
 import asyncio
-import json
 from typing import Any, AsyncGenerator, Dict, List, Optional
 from core.protocol.schema import ProtocolCall
-from core.agent.memory import memory_gateway
 from core.orchestrator.aggregator import ResultAggregator
 from core.communication_bus import bus
 from core.schema.collaboration import ExecutionBlueprint, TaskSpec, ResourceSpec, OutputSpec
+from core.utils.logging import logger
 
 class Dispatcher:
-    """任务编排调度引擎。
-    
-    支持并发分发与实时事件冒泡，实现分布式执行链的透明化调度。
-    """
+    """任务调度中心。"""
 
     def __init__(self):
         self.bus = bus
@@ -23,20 +29,14 @@ class Dispatcher:
         session_id: str,
         blueprint: Optional[ExecutionBlueprint] = None
     ) -> AsyncGenerator[Dict[str, Any], None]:
-        """驱动任务节点的原子化生命周期并透传流式事件。"""
+        """[原子调度] 驱动单节点的生命周期。"""
         from core.agent.factory import ExecutionUnitFactory
         
-        runtime = ExecutionUnitFactory.create_runtime(
-            agent_id=agent_id, 
-            session_id=session_id,
-            blueprint=blueprint
-        )
+        # JIT 实例化执行单元
+        runtime = ExecutionUnitFactory.create_runtime(agent_id, session_id, blueprint)
         
-        async for event in runtime.run(
-            input_text=instruction,
-            blueprint=blueprint,
-            session_id=session_id
-        ):
+        # 实时穿透子任务事件流
+        async for event in runtime.run(input_text=instruction, blueprint=blueprint, session_id=session_id):
             yield event
 
     async def dispatch_calls(
@@ -45,24 +45,20 @@ class Dispatcher:
         session_id: str
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
-        并发分发子任务并实时冒泡执行进度。
+        [并发分发] 执行扇出调度并实现事件冒泡汇聚。
         
-        采用生产级异步队列机制，汇聚多个并发执行单元的事件流。
-        
-        Yields:
-            Dict: 子任务的实时执行事件。
-            Final Event: 包含聚合结果的特殊 observation 事件。
+        采用异步生产-消费模型，确保多节点输出互不阻塞。
         """
         if not calls:
             yield {"type": "observation", "content": "{}"}
             return
 
         queue = asyncio.Queue()
-        pending_tasks = len(calls)
+        active_task_count = len(calls)
 
-        async def _run_and_collect(call_spec: ProtocolCall):
-            nonlocal pending_tasks
-            # 构造蓝图
+        async def _worker(call_spec: ProtocolCall):
+            nonlocal active_task_count
+            # 1. 契约转化：ProtocolCall -> ExecutionBlueprint
             blueprint = ExecutionBlueprint(
                 blueprint_id=f"sub_{call_spec.id}",
                 target_service=call_spec.agent_id,
@@ -71,52 +67,58 @@ class Dispatcher:
                 output=OutputSpec()
             )
             
-            final_output = ""
+            task_result = {"task_id": call_spec.id, "status": "success", "output": None, "message": None}
+            
             try:
-                async for event in self.execute_task(
-                    agent_id=call_spec.agent_id,
-                    instruction=call_spec.instruction,
-                    session_id=session_id,
-                    blueprint=blueprint
-                ):
-                    # 实时将子任务事件推入汇总队列
+                # 2. 启动执行并冒泡事件
+                async for event in self.execute_task(call_spec.agent_id, call_spec.instruction, session_id, blueprint):
+                    # 标识事件来源以便 UI 区分
+                    event["source_task"] = call_spec.id
                     await queue.put(event)
+                    
                     if event["type"] == "conclusion":
-                        final_output = event["content"]
+                        task_result["output"] = event["content"]
                     elif event["type"] == "error":
-                        final_output = f"Error: {event['content']}"
+                        task_result["status"] = "error"
+                        task_result["message"] = event["content"]
                 
-                await queue.put({"task_id": call_spec.id, "status": "success", "output": final_output})
+                # 3. 结果完整性自检
+                if task_result["status"] == "success" and not task_result["output"]:
+                    task_result["status"] = "error"
+                    task_result["message"] = "执行单元未产出有效结论载荷"
+                    
             except Exception as e:
-                await queue.put({"task_id": call_spec.id, "status": "error", "output": str(e)})
+                task_result["status"] = "error"
+                task_result["message"] = f"调度层非预期中断: {str(e)}"
             finally:
-                pending_tasks -= 1
-                if pending_tasks == 0:
+                # 将最终处理后的结果放入队列
+                await queue.put(task_result)
+                active_task_count -= 1
+                if active_task_count == 0:
                     await queue.put(None) # 终止标识
 
-        # 启动并行协程
-        for c in calls:
-            asyncio.create_task(_run_and_collect(c))
+        # 启动并发协程
+        for call in calls:
+            asyncio.create_task(_worker(call))
 
-        # 扇入聚合与实时冒泡
+        # 实时消费并汇总结果
         raw_results = {}
         while True:
             item = await queue.get()
-            if item is None:
-                break
+            if item is None: break
             
-            # 区分过程事件与结果数据
             if "type" in item:
-                yield item # 冒泡过程事件 (stream, status, etc.)
+                yield item # 向上传播过程事件
             else:
-                # 收集用于聚合的结果
+                # 收集用于扇入聚合的结论数据
                 raw_results[item["task_id"]] = {
                     "status": item["status"],
-                    "output": item["output"]
+                    "output": item["output"],
+                    "message": item["message"]
                 }
 
-        # 最终产出脱水聚合报告
-        aggregation = ResultAggregator.aggregate(session_id, raw_results)
-        yield {"type": "observation", "content": aggregation}
+        # 4. 执行扇入聚合 (Fan-in)
+        aggregation_report = ResultAggregator.aggregate(session_id, raw_results)
+        yield {"type": "observation", "content": aggregation_report}
 
 dispatcher = Dispatcher()

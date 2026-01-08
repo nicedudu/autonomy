@@ -26,18 +26,18 @@ class LLMAgent(BaseAgent):
         指令来源于核心库中的 AgentDefinition (INTERNAL_AGENTS)。
         """
         from core.registry.internal import get_internal_agent
+        from core.prompt.compiler import prompt_compiler
         
-        # 1. 获取内置核心指令 (包含 CORE_SYSTEM_PROMPT + Role Instruction)
+        # 1. 获取内置核心指令
         definition = get_internal_agent(self.agent_id)
-        base_prompt = definition.instructions if definition else "You are a helpful AI assistant."
-        
-        # 2. 注入动态上下文 (Skills, Tools)
-        skill_instructions = state.context.get("skill_instructions", "")
-        tool_docs = state.context.get("tool_docs", "")
+        if not definition:
+            return "You are a helpful AI assistant."
 
-        full_prompt = f"{base_prompt}\n\n{skill_instructions}\n\n{tool_docs}"
-        
-        return full_prompt
+        try:
+            return prompt_compiler.compile_agent_prompt(definition, state)
+        except Exception:
+            # Fallback if compilation fails
+            return "You are a helpful AI assistant."
 
     async def think(self, state: AgentState, system_prompt_override: Optional[str] = None) -> AgentMessage:
         """

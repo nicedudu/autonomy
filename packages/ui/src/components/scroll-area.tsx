@@ -8,13 +8,8 @@ import { cn } from "@autonomy/ui/lib/utils"
 function ScrollArea({
   className,
   children,
-  viewportRef,
-  onScroll,
   ...props
-}: React.ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.Root> & {
-  viewportRef?: React.RefObject<HTMLDivElement | null>
-  onScroll?: React.UIEventHandler<HTMLDivElement>
-}) {
+}: React.ComponentProps<typeof ScrollAreaPrimitive.Root>) {
   return (
     <ScrollAreaPrimitive.Root
       data-slot="scroll-area"
@@ -22,11 +17,9 @@ function ScrollArea({
       {...props}
     >
       <ScrollAreaPrimitive.Viewport
-                data-slot="scroll-area-viewport"
-                ref={viewportRef}
-                onScroll={onScroll}
-                className="focus-visible:ring-ring/50 size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:outline-1"
-            >
+        data-slot="scroll-area-viewport"
+        className="focus-visible:ring-ring/50 size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:outline-1"
+      >
         {children}
       </ScrollAreaPrimitive.Viewport>
       <ScrollBar />
@@ -39,7 +32,7 @@ function ScrollBar({
   className,
   orientation = "vertical",
   ...props
-}: React.ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.ScrollAreaScrollbar>) {
+}: React.ComponentProps<typeof ScrollAreaPrimitive.ScrollAreaScrollbar>) {
   return (
     <ScrollAreaPrimitive.ScrollAreaScrollbar
       data-slot="scroll-area-scrollbar"
@@ -62,5 +55,4 @@ function ScrollBar({
   )
 }
 
-export default ScrollArea
 export { ScrollArea, ScrollBar }
