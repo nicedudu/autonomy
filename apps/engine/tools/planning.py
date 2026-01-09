@@ -2,7 +2,7 @@ import json
 import uuid
 from typing import Any, Dict, List, Optional
 
-from tools.base import tool
+from core.tools.base import tool
 
 # 持久化计划存储（内存级）
 _PLANS_STORE: Dict[str, Dict[str, Any]] = {}

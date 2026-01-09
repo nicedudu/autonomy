@@ -98,6 +98,7 @@ interface ExecutionWorkflowProps {
         agentRole: string;
         agentAvatar: string;
         status: "Idle" | "Thinking" | "Responding";
+        parentId?: string;
     }[];
 }
 
@@ -119,39 +120,82 @@ export function ExecutionWorkflow({ workflowSteps }: ExecutionWorkflowProps) {
             return;
         }
 
-        const newNodes: FlowNode[] = workflowSteps.map((step, index) => ({
-            id: step.agentId,
-            type: "agent",
-            position: { x: index * 120 + 50, y: 50 },
-            data: {
-                name: step.agentName,
-                role: step.agentRole,
-                avatar: step.agentAvatar,
-                status: step.status,
-                isFirst: index === 0,
-                isLast: index === workflowSteps.length - 1,
-            },
-        }));
+        // --- Simplified Tree Layout Algorithm ---
+        const nodeMap = new Map<string, typeof workflowSteps[0]>();
+        workflowSteps.forEach(s => nodeMap.set(s.agentId, s));
+
+        // 1. Calculate depths
+        const depths: Record<string, number> = {};
+        const getDepth = (id: string): number => {
+            if (depths[id] !== undefined) return depths[id];
+            const step = nodeMap.get(id);
+            if (!step || !step.parentId || !nodeMap.has(step.parentId)) {
+                depths[id] = 0;
+                return 0;
+            }
+            const d = 1 + getDepth(step.parentId);
+            depths[id] = d;
+            return d;
+        };
+        workflowSteps.forEach(s => getDepth(s.agentId));
+
+        // 2. Group by depth for vertical positioning
+        const levelGroups: Record<number, string[]> = {};
+        workflowSteps.forEach(s => {
+            const d = depths[s.agentId];
+            if (!levelGroups[d]) levelGroups[d] = [];
+            levelGroups[d].push(s.agentId);
+        });
+
+        // 3. Create Nodes with calculated positions
+        const xSpacing = 180;
+        const ySpacing = 100;
+
+        const newNodes: FlowNode[] = workflowSteps.map((step) => {
+            const depth = depths[step.agentId];
+            const indexInLevel = levelGroups[depth].indexOf(step.agentId);
+            const levelSize = levelGroups[depth].length;
+            
+            // Vertical centering logic
+            const yOffset = (indexInLevel - (levelSize - 1) / 2) * ySpacing;
+
+            return {
+                id: step.agentId,
+                type: "agent",
+                position: { 
+                    x: depth * xSpacing + 50, 
+                    y: 150 + yOffset 
+                },
+                data: {
+                    name: step.agentName,
+                    role: step.agentRole,
+                    avatar: step.agentAvatar,
+                    status: step.status,
+                    isFirst: depth === 0,
+                    isLast: !workflowSteps.some(s => s.parentId === step.agentId),
+                },
+            };
+        });
 
         const newEdges: Edge[] = [];
-        for (let i = 0; i < workflowSteps.length - 1; i++) {
-            newEdges.push({
-                id: `e-${workflowSteps[i].agentId}-${
-                    workflowSteps[i + 1].agentId
-                }`,
-                source: workflowSteps[i].agentId,
-                target: workflowSteps[i + 1].agentId,
-                animated:
-                    workflowSteps[i].status !== "Idle" ||
-                    workflowSteps[i + 1].status !== "Idle",
-                type: "smoothstep",
-                style: {
-                    stroke: "var(--primary)",
-                    strokeWidth: 1.5,
-                    opacity: 0.15,
-                },
-            });
-        }
+        workflowSteps.forEach((step) => {
+            if (step.parentId && nodeMap.has(step.parentId)) {
+                newEdges.push({
+                    id: `e-${step.parentId}-${step.agentId}`,
+                    source: step.parentId,
+                    target: step.agentId,
+                    animated:
+                        workflowSteps.find((s) => s.agentId === step.parentId)
+                            ?.status !== "Idle" || step.status !== "Idle",
+                    type: "smoothstep",
+                    style: {
+                        stroke: "var(--primary)",
+                        strokeWidth: 1.5,
+                        opacity: 0.15,
+                    },
+                });
+            }
+        });
 
         setNodes(newNodes);
         setEdges(newEdges);

@@ -3,12 +3,20 @@ export interface PlanStep {
   state: "not_started" | "in_progress" | "completed" | "blocked";
 }
 
+export interface Call {
+  id: string;
+  agent_id: string;
+  instruction: string;
+}
+
 export interface ParsedProtocol {
   thought: string | null;
   plan: PlanStep[] | null;
+  calls: Call[] | null;
   content: string;
   isThoughtClosed: boolean;
   isPlanClosed: boolean;
+  isCallsClosed: boolean;
 }
 
 /**
@@ -75,9 +83,11 @@ export function parseProtocol(text: string): ParsedProtocol {
   const result: ParsedProtocol = {
     thought: null,
     plan: null,
+    calls: null,
     content: text,
     isThoughtClosed: false,
     isPlanClosed: false,
+    isCallsClosed: false,
   };
 
   // 1. Extract Thought (Last one)
@@ -112,7 +122,22 @@ export function parseProtocol(text: string): ParsedProtocol {
       }
   }
 
-  // 3. Cleanup content for display
+  // 3. Extract Calls (Last one)
+  const callsRegex = /<calls>([\s\S]*?)(?:<\/calls>|$)/gi;
+  let cMatch;
+  while ((cMatch = callsRegex.exec(text)) !== null) {
+      const rawCalls = cMatch[1].trim();
+      result.isCallsClosed = cMatch[0].toLowerCase().includes("</calls>");
+      const parsed = parsePartialJson(rawCalls);
+      if (parsed) {
+          const callsArray = Array.isArray(parsed) ? parsed : (parsed.calls || []);
+          if (Array.isArray(callsArray)) {
+              result.calls = callsArray;
+          }
+      }
+  }
+
+  // 4. Cleanup content for display
   result.content = text
     .replace(/<thought>[\s\S]*?(?:<\/thought>|$)/gi, "")
     .replace(/<plan>[\s\S]*?(?:<\/plan>|$)/gi, "")

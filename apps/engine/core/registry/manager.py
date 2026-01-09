@@ -1,5 +1,5 @@
 import os
-from core.registry.agent import AgentRegistry
+from core.registry.internal import INTERNAL_AGENTS
 from core.registry.skill import SkillRegistry
 
 class DiscoveryService:
@@ -12,15 +12,11 @@ class DiscoveryService:
         current_dir = os.path.dirname(os.path.abspath(__file__))
         engine_root = os.path.dirname(os.path.dirname(current_dir))
         
-        self.agents = AgentRegistry(os.path.join(engine_root, "agents", "registry"))
         self.skills = SkillRegistry(os.path.join(engine_root, "agents", "skills"))
 
     def initialize(self):
         """执行全量扫描与初始化。"""
-        # 1. 初始化智能体 (V2.0 逻辑)
-        self.agents.discover()
-        
-        # 2. 注册核心工具
+        # 1. 注册核心工具
         from tools import CORE_TOOLS
         from core.tools.registry import tool_registry
         from core.tools.base import BaseTool
@@ -35,8 +31,12 @@ class DiscoveryService:
             else:
                 print(f"\033[91m[Discovery] Skipping invalid tool: {t}\033[0m")
         
-        # 3. 扫描外部技能 (未来可扩展)
+        # 2. 扫描外部技能
         self.skills.discover()
 
-# 全局单例，供系统各组件调用
+    def get_all_agents(self):
+        """获取所有内置智能体定义。"""
+        return INTERNAL_AGENTS
+
+# 全局单例
 discovery_service = DiscoveryService()

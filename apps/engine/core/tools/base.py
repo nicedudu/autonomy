@@ -1,6 +1,7 @@
-from typing import Any, Callable, Dict, Optional, TypeVar, cast
 import functools
-from pydantic import BaseModel
+import inspect
+from typing import Any, Callable, Dict, Optional, TypeVar, cast, get_type_hints
+from pydantic import BaseModel, TypeAdapter
 
 class ToolMetadata(BaseModel):
     """工具元数据模型"""
@@ -54,29 +55,66 @@ class BaseTool:
 F = TypeVar("F", bound=Callable[..., Any])
 
 def tool(
-    name: str,
-    description: str,
-    parameters: Dict[str, Any]
+    name: Optional[str] = None,
+    description: Optional[str] = None,
+    parameters: Optional[Dict[str, Any]] = None
 ) -> Callable[[F], F]:
     """
     生产级工具装饰器。
     
-    将异步/同步函数封装为统一的 BaseTool 实例，并挂载元数据。
+    支持自动推导 Schema 或显式定义。
     """
     def decorator(func: F) -> F:
-        # 创建工具实例
+        # 1. 自动推导元数据
+        tool_name = name or func.__name__
+        tool_desc = description or (inspect.getdoc(func) or "无描述").split("\n")[0]
+        
+        # 2. 自动构建参数 Schema (如果未显式提供)
+        if parameters:
+            params_schema = parameters
+        else:
+            sig = inspect.signature(func)
+            try:
+                hints = get_type_hints(func)
+            except Exception:
+                hints = {}
+
+            properties = {}
+            required = []
+            for p_name, param in sig.parameters.items():
+                if p_name in ("self", "cls", "session_id"): continue
+                
+                type_hint = hints.get(p_name, Any)
+                try:
+                    adapter = TypeAdapter(type_hint)
+                    schema = adapter.json_schema()
+                    schema.pop("title", None)
+                    properties[p_name] = schema
+                except Exception:
+                    properties[p_name] = {"type": "string"}
+                
+                if param.default is inspect.Parameter.empty:
+                    required.append(p_name)
+
+            params_schema = {
+                "type": "object",
+                "properties": properties,
+                "required": required,
+                "additionalProperties": False
+            }
+
+        # 3. 创建工具实例
         instance = BaseTool(
-            name=name,
-            description=description,
-            parameters=parameters,
+            name=tool_name,
+            description=tool_desc,
+            parameters=params_schema,
             func=func
         )
-        # 将实例挂载到原函数上，方便注册中心扫描提取
-        setattr(func, "__tool__", instance)
         
         @functools.wraps(func)
         async def wrapper(*args, **kwargs):
             return await instance.execute(*args, **kwargs)
             
+        wrapper.__tool__ = instance
         return cast(F, wrapper)
     return decorator

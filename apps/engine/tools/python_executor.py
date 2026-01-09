@@ -2,7 +2,7 @@ import sys
 import io
 import traceback
 from typing import Dict, Any
-from tools.base import tool
+from core.tools.base import tool
 
 class CodeSandbox:
     """

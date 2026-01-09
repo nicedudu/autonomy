@@ -10,20 +10,17 @@ async def get_agents():
     返回包含身份、角色、能力及模型配置的智能体清单。
     """
     try:
-        # 强制同步最新的 Manifest 数据
-        discovery_service.initialize()
-        manifests = discovery_service.agents.all()
+        agents = discovery_service.get_all_agents()
         return [
             {
                 "id": m.agent_id,
                 "identifier": m.agent_id,
                 "name": m.name,
                 "role": m.role,
-                "description": m.description,
                 "capabilities": m.capabilities,
                 "avatar": f"https://api.dicebear.com/7.x/avataaars/svg?seed={m.agent_id}"
             }
-            for m in manifests.values()
+            for m in agents.values()
         ]
     except Exception as e:
         return {"error": str(e)}
@@ -35,7 +32,6 @@ async def get_skills():
     返回技能的元数据、描述及执行指令。
     """
     try:
-        discovery_service.initialize()
         skills = discovery_service.skills.all()
         return [
             {

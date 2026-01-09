@@ -42,7 +42,8 @@ class Dispatcher:
     async def dispatch_calls(
         self,
         calls: List[ProtocolCall],
-        session_id: str
+        session_id: str,
+        parent_agent_id: Optional[str] = None
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
         [并发分发] 执行扇出调度并实现事件冒泡汇聚。
@@ -66,6 +67,16 @@ class Dispatcher:
                 resource=ResourceSpec(artifact_refs=call_spec.artifact_refs),
                 output=OutputSpec()
             )
+            
+            # 发送拓扑更新事件
+            await queue.put({
+                "type": "workflow",
+                "event": "node_added",
+                "node": {
+                    "agent_id": call_spec.agent_id,
+                    "parent_id": parent_agent_id
+                }
+            })
             
             task_result = {"task_id": call_spec.id, "status": "success", "output": None, "message": None}
             

@@ -1,6 +1,6 @@
 import asyncio
 from typing import Dict, Any, Optional
-from tools.base import tool
+from core.tools.base import tool
 
 @tool()
 async def web_search(query: str, provider: Optional[str] = "duckduckgo") -> Dict[str, Any]:

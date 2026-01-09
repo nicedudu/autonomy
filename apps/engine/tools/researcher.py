@@ -1,5 +1,5 @@
 from typing import Any, Dict
-from tools.base import tool
+from core.tools.base import tool
 
 @tool()
 async def researcher(query: str) -> Dict[str, Any]:

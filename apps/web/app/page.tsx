@@ -19,6 +19,7 @@ import { ChatInput } from "./components/ChatInput";
 import { ExecutionWorkflow, ExecutionWorkflowEmpty } from "./components/ExecutionWorkflow";
 import { HistorySidebar } from "./components/HistorySidebar";
 import { MessageList } from "./components/MessageList";
+import { parseProtocol } from "@/lib/stream-parser";
 
 interface Message {
     id: string;
@@ -45,6 +46,7 @@ interface WorkflowStep {
     agentRole: string;
     agentAvatar: string;
     status: "Idle" | "Thinking" | "Responding";
+    parentId?: string;
 }
 
 interface Session {
@@ -146,7 +148,7 @@ export default function ExecutionConsole() {
     }, [fetchSessions]);
 
     const updateWorkflow = useCallback(
-        (agentId: string, status: WorkflowStep["status"]) => {
+        (agentId: string, status: WorkflowStep["status"], parentId?: string) => {
             setWorkflowSteps((prev) => {
                 const agent = agentsRef.current.find(
                     (a) => a.identifier === agentId
@@ -161,6 +163,8 @@ export default function ExecutionConsole() {
                     newSteps[existingIndex] = {
                         ...newSteps[existingIndex],
                         status,
+                        // Update parentId if provided and not already set
+                        parentId: parentId || newSteps[existingIndex].parentId,
                     };
                     return newSteps;
                 } else {
@@ -172,6 +176,7 @@ export default function ExecutionConsole() {
                             agentRole: agent.role,
                             agentAvatar: agent.avatar,
                             status,
+                            parentId,
                         },
                     ];
                 }
@@ -313,60 +318,77 @@ export default function ExecutionConsole() {
                 for (const line of lines) {
                     if (!line.trim()) continue;
                     try {
-                        const event = JSON.parse(line);
-                        if (event.type === "stream") {
-                            if (
-                                event.agent_id &&
-                                event.agent_id !== lastAgentId
-                            ) {
-                                // Agent Handoff
-                                updateWorkflow(lastAgentId, "Idle");
-                                lastAgentId = event.agent_id;
-                                updateWorkflow(lastAgentId, "Responding");
-
-                                currentAssistantId = (
-                                    Date.now() + Math.random()
-                                ).toString();
-                                const newAgent = agentsRef.current.find(
-                                    (a) => a.identifier === event.agent_id
-                                );
-                                setMessages((prev) => [
-                                    ...prev,
-                                    {
-                                        id: currentAssistantId,
-                                        role: "assistant",
-                                        content: event.content,
-                                        agent_id: event.agent_id,
-                                        agent_name:
-                                            newAgent?.name || event.agent_id,
-                                        agent_avatar: newAgent?.avatar || "",
-                                        timestamp: Date.now(),
-                                    },
-                                ]);
-                            } else {
-                                updateWorkflow(lastAgentId, "Responding");
-                                setMessages((prev) =>
-                                    prev.map((msg) =>
-                                        msg.id === currentAssistantId
-                                            ? {
-                                                  ...msg,
-                                                  content:
-                                                      (msg.content || "") +
-                                                      event.content,
-                                              }
-                                            : msg
-                                    )
-                                );
-                            }
-                        } else if (event.type === "status") {
-                            setMessages((prev) =>
-                                prev.map((msg) =>
-                                    msg.id === currentAssistantId
-                                        ? { ...msg, status: event.content }
-                                        : msg
-                                )
-                            );
-                        }
+                                                const event = JSON.parse(line);
+                                                if (event.type === "stream") {
+                                                    if (
+                                                        event.agent_id &&
+                                                        event.agent_id !== lastAgentId
+                                                    ) {
+                                                        // Agent Handoff (Traditional)
+                                                        updateWorkflow(lastAgentId, "Idle");
+                                                        lastAgentId = event.agent_id;
+                                                        updateWorkflow(lastAgentId, "Responding");
+                        
+                                                        currentAssistantId = (
+                                                            Date.now() + Math.random()
+                                                        ).toString();
+                                                        const newAgent = agentsRef.current.find(
+                                                            (a) => a.identifier === event.agent_id
+                                                        );
+                                                        setMessages((prev) => [
+                                                            ...prev,
+                                                            {
+                                                                id: currentAssistantId,
+                                                                role: "assistant",
+                                                                content: event.content,
+                                                                agent_id: event.agent_id,
+                                                                agent_name:
+                                                                    newAgent?.name || event.agent_id,
+                                                                agent_avatar: newAgent?.avatar || "",
+                                                                timestamp: Date.now(),
+                                                            },
+                                                        ]);
+                                                    } else {
+                                                        updateWorkflow(lastAgentId, "Responding");
+                        
+                                                        setMessages((prev) =>
+                                                            prev.map((msg) =>
+                                                                msg.id === currentAssistantId
+                                                                    ? {
+                                                                          ...msg,
+                                                                          content:
+                                                                              (msg.content || "") +
+                                                                              event.content,
+                                                                      }
+                                                                    : msg
+                                                            )
+                                                        );
+                                                    }
+                                                } else if (event.type === "status") {
+                                                    // Update workflow status for specific agent
+                                                    const targetAgentId = event.agent || lastAgentId;
+                                                    let status: WorkflowStep["status"] = "Responding";
+                                                    if (event.content.includes("正在运行") || event.content.includes("思考")) {
+                                                        status = "Thinking";
+                                                    }
+                                                    updateWorkflow(targetAgentId, status);
+                        
+                                                    setMessages((prev) =>
+                                                        prev.map((msg) =>
+                                                            msg.id === currentAssistantId
+                                                                ? { ...msg, status: event.content }
+                                                                : msg
+                                                        )
+                                                    );
+                                                } else if (event.type === "workflow") {
+                                                    if (event.event === "node_added") {
+                                                        updateWorkflow(
+                                                            event.node.agent_id,
+                                                            "Idle",
+                                                            event.node.parent_id
+                                                        );
+                                                    }
+                                                }
                     } catch {
                         // Ignore JSON parse errors in stream
                     }
