@@ -1,48 +1,38 @@
-"""
-基础日志中间件 (Logging Middleware)
-
-拦截推理链与工具链的生命周期，提供自动化的耗时统计、参数审计及异常堆栈记录。
-"""
-
-import time
 import json
-from typing import Any, Callable, Dict
+from typing import List, Any
+from core.llm.schema import LLMMessage
 from core.middleware.base import BaseMiddleware
-from core.agent.state import AgentState
-from core.utils.logging import logger
+from core.protocol.schema import ProtocolResponse
+from core.session.session import Session
 
 class LoggingMiddleware(BaseMiddleware):
-    """
-    运行时审计拦截器。
-    
-    采用洋葱模型实现对执行节点的全景观测。
-    """
+    priority: int = 0
 
-    async def __call__(self, state: AgentState, next_call: Callable) -> Any:
-        """推理链审计"""
-        logger.info(f"==> 推理开始: {state.agent_id}", state.agent_id)
-        start_time = time.time()
-
-        try:
-            response = await next_call(state)
-            duration = time.time() - start_time
-            logger.success(f"<== 推理结束 | 耗时: {duration:.2f}s", state.agent_id)
-            return response
-        except Exception as e:
-            logger.error(f"推理异常: {str(e)}", state.agent_id)
-            raise e
-
-    async def on_tool(self, state: AgentState, action: Dict[str, Any], next_call: Callable) -> Any:
-        """工具链审计"""
-        tool_name = action.get("tool_name") or action.get("function") or "unknown"
-        logger.debug(f"工具调用 [{tool_name}] | 参数: {json.dumps(action.get('arguments', {}), ensure_ascii=False)}", state.agent_id)
+    async def pre_inference(self, session: Session, messages: List[LLMMessage]):
+        turn_index = (len(session.history) // 2) + 1
+        agent_id = session.get_metadata("agent_id", "unknown")
         
-        start_time = time.time()
-        try:
-            result = await next_call(state, action)
-            duration = time.time() - start_time
-            logger.success(f"工具返回 [{tool_name}] | 耗时: {duration:.2f}s", state.agent_id)
-            return result
-        except Exception as e:
-            logger.error(f"工具崩溃 [{tool_name}]: {str(e)}", state.agent_id)
-            raise e
+        print(f"\n" + "="*40 + f" ROUND {turn_index} " + "="*40)
+        print(f"DRIVEN BY: {agent_id}")
+        
+        # 输出全量系统提示词
+        system_prompt = session.get_metadata("last_system_prompt", "N/A")
+        print(f"\n--- [REAL LLM INPUT START] ---\\n")
+        print(f"SYSTEM:\n{system_prompt}\n")
+        
+        print(f"MESSAGES:")
+        for m in messages:
+            print(f"[{m.role.value.upper()}]:\n{m.content}\n")
+        print(f"--- [REAL LLM INPUT END] ---\\n")
+
+    async def post_inference(self, session: Session, proto: ProtocolResponse):
+        # 仅输出最原始的模型响应，不做任何解析展示
+        print(f"\n--- [REAL LLM OUTPUT START] ---\\n")
+        print(proto.raw_payload)
+        print(f"\n--- [REAL LLM OUTPUT END] ---\\n")
+        print("="*90 + "\n")
+
+    async def on_agent_end(self, session: Session):
+        # 任务结束标记
+        status = session.get_metadata("status", "N/A")
+        print(f"\n[MISSION END] Final Status: {status}\n")

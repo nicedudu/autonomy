@@ -1,135 +1,89 @@
 """
-任务编排调度中枢 (Dispatcher V3.5)
+能力分发器 (Capability Dispatcher)
 
-职责：管理分布式任务的扇出 (Fan-out) 与扇入 (Fan-in)。
-核心机制：
-1. 实现子任务的并发隔离执行。
-2. 汇聚并冒泡所有子节点的实时事件流。
-3. 确保子任务结论的完整性捕获。
+职责：实现跨领域的原子能力派发。
+集成 CommunicationBus 消息总线，实现执行状态的实时发布与外部审计。
 """
 
-import asyncio
-from typing import Any, AsyncGenerator, Dict, List, Optional
-from core.protocol.schema import ProtocolCall
-from core.orchestrator.aggregator import ResultAggregator
+import logging
+from typing import Any, Dict, Optional
+from core.tools.registry import tool_registry
+from core.agent.registry import agent_registry
+from core.agent.agent import Agent
+from core.session.session import Session
+from core.orchestrator.schema import TaskResult
 from core.communication_bus import bus
-from core.schema.collaboration import ExecutionBlueprint, TaskSpec, ResourceSpec, OutputSpec
-from core.utils.logging import logger
 
-class Dispatcher:
-    """任务调度中心。"""
+logger = logging.getLogger(__name__)
+
+class CapabilityDispatcher:
+    """
+    全域任务调度器。
+    """
 
     def __init__(self):
+        # 持有通信总线引用，供 API 层进行回调绑定
         self.bus = bus
 
-    async def execute_task(
-        self,
-        agent_id: str,
-        instruction: str,
-        session_id: str,
-        blueprint: Optional[ExecutionBlueprint] = None
-    ) -> AsyncGenerator[Dict[str, Any], None]:
-        """[原子调度] 驱动单节点的生命周期。"""
-        from core.agent.factory import ExecutionUnitFactory
-        
-        # JIT 实例化执行单元
-        runtime = ExecutionUnitFactory.create_runtime(agent_id, session_id, blueprint)
-        
-        # 实时穿透子任务事件流
-        async for event in runtime.run(input_text=instruction, blueprint=blueprint, session_id=session_id):
-            yield event
-
-    async def dispatch_calls(
-        self,
-        calls: List[ProtocolCall],
-        session_id: str,
-        parent_agent_id: Optional[str] = None
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+    async def dispatch(self, node_id: str, capability: str, arguments: Dict[str, Any], session: Session) -> TaskResult:
         """
-        [并发分发] 执行扇出调度并实现事件冒泡汇聚。
-        
-        采用异步生产-消费模型，确保多节点输出互不阻塞。
+        根据能力标识符执行派发逻辑。
         """
-        if not calls:
-            yield {"type": "observation", "content": "{}"}
-            return
+        # 发布起始事件到总线
+        await self.bus.publish("task_started", {"node_id": node_id, "capability": capability, "session_id": session.id})
 
-        queue = asyncio.Queue()
-        active_task_count = len(calls)
-
-        async def _worker(call_spec: ProtocolCall):
-            nonlocal active_task_count
-            # 1. 契约转化：ProtocolCall -> ExecutionBlueprint
-            blueprint = ExecutionBlueprint(
-                blueprint_id=f"sub_{call_spec.id}",
-                target_service=call_spec.agent_id,
-                task=TaskSpec(instruction=call_spec.instruction),
-                resource=ResourceSpec(artifact_refs=call_spec.artifact_refs),
-                output=OutputSpec()
+        # 1. 路径 A: 路由至原子工具
+        tool_obj = tool_registry.get_tool(capability)
+        if tool_obj:
+            res = await tool_obj.execute(tool_params=arguments, session=session)
+            result = TaskResult(
+                node_id=node_id,
+                status=res.status,
+                output=res.output,
+                error=res.error
             )
+            # 发布结果事件
+            await self.bus.publish("task_completed", result.model_dump())
+            return result
+
+        # 2. 路径 B: 路由至智能体 (递归委派)
+        profile = agent_registry.get_profile(capability)
+        if profile:
+            from core.session.manager import session_manager
+            sub_session = session_manager.create_session(parent_id=session.id)
             
-            # 发送拓扑更新事件
-            await queue.put({
-                "type": "workflow",
-                "event": "node_added",
-                "node": {
-                    "agent_id": call_spec.agent_id,
-                    "parent_id": parent_agent_id
-                }
-            })
+            instruction = str(arguments.get("instruction", str(arguments)))
             
-            task_result = {"task_id": call_spec.id, "status": "success", "output": None, "message": None}
+            from core.agent.executor import AgentExecutor
+            sub_agent = Agent.create(profile, sub_session)
+            executor = AgentExecutor()
             
+            final_conclusion = ""
             try:
-                # 2. 启动执行并冒泡事件
-                async for event in self.execute_task(call_spec.agent_id, call_spec.instruction, session_id, blueprint):
-                    # 标识事件来源以便 UI 区分
-                    event["source_task"] = call_spec.id
-                    await queue.put(event)
-                    
+                async for event in executor.run(sub_agent, input_text=instruction):
                     if event["type"] == "conclusion":
-                        task_result["output"] = event["content"]
+                        final_conclusion = event["content"]
                     elif event["type"] == "error":
-                        task_result["status"] = "error"
-                        task_result["message"] = event["content"]
+                        return TaskResult(node_id=node_id, status="error", error=event["content"])
                 
-                # 3. 结果完整性自检
-                if task_result["status"] == "success" and not task_result["output"]:
-                    task_result["status"] = "error"
-                    task_result["message"] = "执行单元未产出有效结论载荷"
-                    
+                result = TaskResult(
+                    node_id=node_id,
+                    status="success",
+                    output=final_conclusion or "子任务已完成。"
+                )
+                await self.bus.publish("task_completed", result.model_dump())
+                return result
             except Exception as e:
-                task_result["status"] = "error"
-                task_result["message"] = f"调度层非预期中断: {str(e)}"
-            finally:
-                # 将最终处理后的结果放入队列
-                await queue.put(task_result)
-                active_task_count -= 1
-                if active_task_count == 0:
-                    await queue.put(None) # 终止标识
+                return TaskResult(node_id=node_id, status="error", error=str(e))
 
-        # 启动并发协程
-        for call in calls:
-            asyncio.create_task(_worker(call))
+        # 3. 路径 C: 寻址失败
+        error_res = TaskResult(
+            node_id=node_id,
+            status="error",
+            error=f"能力路由失败: '{capability}' 未定义。"
+        )
+        await self.bus.publish("task_failed", error_res.model_dump())
+        return error_res
 
-        # 实时消费并汇总结果
-        raw_results = {}
-        while True:
-            item = await queue.get()
-            if item is None: break
-            
-            if "type" in item:
-                yield item # 向上传播过程事件
-            else:
-                # 收集用于扇入聚合的结论数据
-                raw_results[item["task_id"]] = {
-                    "status": item["status"],
-                    "output": item["output"],
-                    "message": item["message"]
-                }
-
-        # 4. 执行扇入聚合 (Fan-in)
-        aggregation_report = ResultAggregator.aggregate(session_id, raw_results)
-        yield {"type": "observation", "content": aggregation_report}
-
-dispatcher = Dispatcher()
+# 全局派发单例
+dispatcher = CapabilityDispatcher()

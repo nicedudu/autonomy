@@ -1,6 +1,8 @@
 import asyncio
-from typing import Dict, Any
+from typing import Any, Dict
+
 from core.tools.base import tool
+
 
 class TerminalService:
     """
@@ -19,18 +21,18 @@ class TerminalService:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
-            
+
             stdout, stderr = await process.communicate()
-            
+
             output_str = stdout.decode().strip()
             error_str = stderr.decode().strip()
-            
+
             combined_output = []
             if output_str:
                 combined_output.append(output_str)
             if error_str:
                 combined_output.append(f"错误输出:\n{error_str}")
-            
+
             return {
                 "status": "success",
                 "output": "\n".join(combined_output) if combined_output else "命令成功执行，无输出。"
@@ -41,11 +43,12 @@ class TerminalService:
                 "message": f"执行失败: {str(e)}"
             }
 
+
 @tool(name="terminal_execute")
 async def terminal_execute(command: str) -> Dict[str, Any]:
     """
     执行终端命令并返回输出。
-    
+
     command: 需要执行的 shell 命令字符串。
     """
     return await TerminalService.execute(command)

@@ -1,120 +1,136 @@
 import functools
 import inspect
-from typing import Any, Callable, Dict, Optional, TypeVar, cast, get_type_hints
-from pydantic import BaseModel, TypeAdapter
+import logging
+from typing import Any, Callable, Dict, Optional, TypeVar, cast, get_type_hints, Union
+from pydantic import BaseModel, create_model, Field
 
-class ToolMetadata(BaseModel):
-    """工具元数据模型"""
-    name: str
-    description: str
-    parameters: Dict[str, Any]
-    strict: bool = True
+logger = logging.getLogger(__name__)
 
 class ToolResult(BaseModel):
-    """工具执行结果模型"""
-    status: str  # "success" or "error"
+    """
+    原子工具执行结果封装。
+    用于标准化不同业务逻辑的输出载荷。
+    """
+    status: str
     output: Any
     error: Optional[str] = None
 
-class BaseTool:
+class BaseTool(BaseModel):
     """
-    智能体工具基类。
-    所有具体工具需继承此类或通过装饰器转换。
+    工具实体抽象。
+    管理工具的契约解析（Schema Generation）与运行时的 Session 注入。
     """
+    name: str
+    description: str
+    parameters: Dict[str, Any]
+    func: Callable = Field(exclude=True)
 
-    def __init__(self, name: str, description: str, parameters: Dict[str, Any], func: Callable):
-        self.name = name
-        self.description = description
-        self.parameters = parameters
-        self.func = func
+    class Config:
+        arbitrary_types_allowed = True
 
-    async def execute(self, **kwargs) -> ToolResult:
-        """执行工具逻辑"""
+    async def execute(self, tool_params: Dict[str, Any], session: Any) -> ToolResult:
+        """
+        触发工具执行。
+        
+        采用签名内省机制实现 Session 实例的直接注入。
+        注入逻辑：
+        1. 遍历函数签名参数。
+        2. 若参数名为 'session'，则注入当前会话实体。
+        3. 否则从模型提供的业务负载 (tool_params) 中按名匹配。
+        """
         try:
-            import asyncio
-            if asyncio.iscoroutinefunction(self.func):
-                res = await self.func(**kwargs)
+            sig = inspect.signature(self.func)
+            final_kwargs = {}
+            
+            for param_name in sig.parameters:
+                # 注入点：直接注入 Session 对象
+                if param_name == "session":
+                    final_kwargs[param_name] = session
+                
+                # 业务参数填充
+                elif param_name in tool_params:
+                    final_kwargs[param_name] = tool_params[param_name]
+
+            # 逻辑执行
+            if inspect.iscoroutinefunction(self.func):
+                res = await self.func(**final_kwargs)
             else:
-                res = self.func(**kwargs)
+                res = self.func(**final_kwargs)
+                
             return ToolResult(status="success", output=res)
+            
         except Exception as e:
+            logger.error(f"Execution Error [{self.name}]: {e}", exc_info=True)
             return ToolResult(status="error", output=None, error=str(e))
 
     def to_openai_format(self) -> Dict[str, Any]:
-        """转换为 OpenAI 函数调用格式"""
+        """导出 OpenAI 兼容的 Function Calling 契约"""
         return {
             "type": "function",
             "function": {
                 "name": self.name,
                 "description": self.description,
-                "parameters": self.parameters,
-                "strict": True
+                "parameters": self.parameters
             }
         }
 
 F = TypeVar("F", bound=Callable[..., Any])
 
 def tool(
+    _func: Optional[F] = None,
+    *,
     name: Optional[str] = None,
     description: Optional[str] = None,
-    parameters: Optional[Dict[str, Any]] = None
-) -> Callable[[F], F]:
+) -> Union[F, Callable[[F], F]]:
     """
-    生产级工具装饰器。
+    工具自举装饰器。
     
-    支持自动推导 Schema 或显式定义。
+    实现“定义与执行分离”：
+    1. 自动解析函数签名，生成业务级 JSON Schema。
+    2. 自动屏蔽 'session' 注入参数，确保模型契约纯净。
     """
     def decorator(func: F) -> F:
-        # 1. 自动推导元数据
         tool_name = name or func.__name__
-        tool_desc = description or (inspect.getdoc(func) or "无描述").split("\n")[0]
+        docstring = inspect.getdoc(func) or ""
+        tool_desc = description or (docstring.split("\n")[0] if docstring else "Undefined")
+
+        sig = inspect.signature(func)
+        type_hints = get_type_hints(func)
+        fields = {}
         
-        # 2. 自动构建参数 Schema (如果未显式提供)
-        if parameters:
-            params_schema = parameters
-        else:
-            sig = inspect.signature(func)
-            try:
-                hints = get_type_hints(func)
-            except Exception:
-                hints = {}
+        # 核心逻辑：凡是名为 session 的参数均视为系统注入项，不在契约中体现
+        for param_name, param in sig.parameters.items():
+            if param_name in ("self", "cls", "session"):
+                continue
+            
+            annotation = type_hints.get(param_name, Any)
+            default = param.default if param.default is not inspect.Parameter.empty else ...
+            fields[param_name] = (annotation, default)
 
-            properties = {}
-            required = []
-            for p_name, param in sig.parameters.items():
-                if p_name in ("self", "cls", "session_id"): continue
-                
-                type_hint = hints.get(p_name, Any)
-                try:
-                    adapter = TypeAdapter(type_hint)
-                    schema = adapter.json_schema()
-                    schema.pop("title", None)
-                    properties[p_name] = schema
-                except Exception:
-                    properties[p_name] = {"type": "string"}
-                
-                if param.default is inspect.Parameter.empty:
-                    required.append(p_name)
+        # 构建契约验证模型
+        DynamicModel = create_model(f"{tool_name}Args", **fields)
+        try:
+            schema = DynamicModel.model_json_schema()
+        except AttributeError:
+            schema = DynamicModel.schema()
 
-            params_schema = {
-                "type": "object",
-                "properties": properties,
-                "required": required,
-                "additionalProperties": False
-            }
+        if "title" in schema:
+            del schema["title"]
 
-        # 3. 创建工具实例
-        instance = BaseTool(
+        tool_instance = BaseTool(
             name=tool_name,
             description=tool_desc,
-            parameters=params_schema,
+            parameters=schema,
             func=func
         )
-        
+
         @functools.wraps(func)
         async def wrapper(*args, **kwargs):
-            return await instance.execute(*args, **kwargs)
+            session = kwargs.pop("session", None)
+            return await tool_instance.execute(kwargs, session=session)
             
-        wrapper.__tool__ = instance
+        setattr(wrapper, "__tool__", tool_instance)
         return cast(F, wrapper)
-    return decorator
+
+    if _func is None: return decorator
+    return decorator(_func)

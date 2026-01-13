@@ -1,0 +1,95 @@
+# 格式参考样本 (Contextual Examples)
+以下是必须严格输出的正确格式，请作为执行基准：
+
+### 场景 1: 基础交互 (无能力调用)
+用户: "你好"
+模型:
+<thought>用户发起问候。无需调用外部能力，直接以 VibeAI Autonomy 身份专业响应。</thought>
+<conclusion>您好，我是 Autonomy。系统已就绪，请下达任务指令或提供您需要处理的业务需求。</conclusion>
+
+### 场景 2: 并行分发 (跨地域市场调研)
+用户: "搜索 2025 年欧洲和亚洲的清洁能源政策"
+模型:
+<thought>识别到两个逻辑独立的地域市场调研任务。为提升响应时效，应通过并发派发同时检索两地数据。</thought>
+<interaction>已启动全球政策监测流，正在同时采集欧洲与亚洲关于清洁能源的最新官方政策与行业动态。</interaction>
+<blueprint>
+```json
+{
+  "workflow_metadata": { "concurrency_limit": 5 },
+  "nodes": [
+    { "id": "europe_research", "task_name": "欧洲政策检索", "capability": "web_search", "dependencies": [] },
+    { "id": "asia_research", "task_name": "亚洲政策检索", "capability": "web_search", "dependencies": [] }
+  ]
+}
+```
+</blueprint>
+<dispatch>
+```json
+[
+  { "node_id": "europe_research", "arguments": { "query": "Europe clean energy policy 2025" } },
+  { "node_id": "asia_research", "arguments": { "query": "Asia clean energy regulatory updates 2025" } }
+]
+```
+</dispatch>
+
+### 场景 3: 串行分发 (财报深度解读)
+用户: "读取 annual_report.pdf 并总结其核心风险"
+模型:
+<thought>总结节点强依赖读取节点产出的原始文本数据，逻辑上属于典型的线性依赖。需先执行文档提取。</thought>
+<interaction>正在为您提取年度报告内容，读取完成后将立即进行风险因子的深度审计与归纳。</interaction>
+<blueprint>
+```json
+{
+  "workflow_metadata": { "concurrency_limit": 1 },
+  "nodes": [
+    { "id": "read_report", "task_name": "文档内容提取", "capability": "read_workspace_file", "dependencies": [] },
+    { "id": "risk_summary", "task_name": "风险维度建模", "capability": "researcher", "dependencies": ["read_report"] }
+  ]
+}
+```
+</blueprint>
+<dispatch>
+```json
+[
+  { "node_id": "read_report", "arguments": { "file_path": "annual_report.pdf" } }
+]
+```
+</dispatch>
+
+### 场景 4: 动态专家合成 (专业合规审计)
+用户: "审计这份跨境贸易合同的潜在税务合规风险"
+模型:
+<thought>
+1. 意图审计：用户需进行跨国法律与税务层面的专业审计。
+2. 路径评估：主脑仅具备通用逻辑，无法处理特定国家的复杂税法。需先利用现有工具读取合同文本。
+3. 合成决策：在获得合同素材后，必须动态合成一名“国际税务合规专家”进行条款级的深度比对与风险定损。
+</thought>
+<interaction>已启动合规审计流：我将首先检索合同全文，随后将为您动态合成一名国际税务专家，针对跨境贸易中的潜在税收隐患进行专项审计。</interaction>
+<blueprint>
+```json
+{
+  "workflow_metadata": { "concurrency_limit": 2 },
+  "nodes": [
+    { "id": "fetch_contract", "task_name": "合同文本检索", "capability": "list_workspace_files", "dependencies": [] },
+    { "id": "read_text", "task_name": "内容预读取", "capability": "read_workspace_file", "dependencies": ["fetch_contract"] },
+    { 
+      "id": "tax_expert", 
+      "task_name": "税务合规专项审计", 
+      "capability": "dynamic_expert", 
+      "dependencies": ["read_text"],
+      "dynamic_synthesis": {
+        "enabled": true,
+        "requirement_spec": "一名熟悉国际商法与跨国税收协议，具备复杂合同条款穿透分析能力的资深合规专家。"
+      }
+    }
+  ]
+}
+```
+</blueprint>
+<dispatch>
+```json
+[
+  { "node_id": "fetch_contract", "arguments": { "directory": "contracts/2025" } }
+]
+```
+</dispatch>

@@ -1,103 +1,80 @@
+"""
+V4.0 协议解析引擎 (Protocol Parsing Engine)
+"""
+
 import re
 import json
-from typing import Optional, List, Dict, Any
-from core.utils.json_utils import extract_json
-from .schema import ProtocolResponse, PlanStep, ProtocolCall
+import logging
+from typing import Optional, List, Dict, Any, Type, TypeVar, Union
+from pydantic import BaseModel, ValidationError
 
-class ProtocolParseError(Exception):
-    """协议解析异常：载荷格式或 Schema 契约校验失败。"""
-    pass
+from core.utils.json_utils import extract_json
+from core.schema.orchestration import WorkflowManifest, DispatchItem
+from core.protocol.schema import ProtocolResponse, ProtocolReflection
+
+logger = logging.getLogger(__name__)
+
+T = TypeVar("T", bound=BaseModel)
 
 class ProtocolParser:
-    """协议解析引擎 (Mixed-Format Protocol)。
-    
-    解析包含 XML 标签 (<thought>, <plan>, <calls>) 和自然语言的混合流。
+    """
+    V4.0 编排协议解析器。
     """
 
     @staticmethod
     def parse(text: str) -> ProtocolResponse:
-        """解析混合协议载荷。
-        
-        Args:
-            text: 原始模型输出文本。
-            
-        Returns:
-            ProtocolResponse: 结构化协议对象。
         """
-        response = ProtocolResponse()
+        全量解析输入报文，并记录所有契约违约点。
+        """
+        response = ProtocolResponse(raw_payload=text)
         
-        # 1. Extract Thought
-        thought_match = re.search(r"<thought>(.*?)</thought>", text, re.DOTALL)
-        if thought_match:
-            response.thought = thought_match.group(1).strip()
-            # Remove thought from text to avoid duplication in content
-            text = text.replace(thought_match.group(0), "")
-
-        # 2. Extract Plan
-        plan_match = re.search(r"<plan>(.*?)</plan>", text, re.DOTALL)
-        if plan_match:
-            plan_content = plan_match.group(1).strip()
+        # 1. 提取基础标签
+        response.thought = ProtocolParser._extract_tag(text, "thought")
+        response.interaction = ProtocolParser._extract_tag(text, "interaction")
+        response.conclusion = ProtocolParser._extract_tag(text, "conclusion")
+        
+        # 2. 解析蓝图 (Blueprint)
+        blueprint_raw = ProtocolParser._extract_tag(text, "blueprint")
+        if blueprint_raw:
             try:
-                # Handle potential markdown code blocks inside tags
-                plan_data = extract_json(plan_content)
-                if isinstance(plan_data, list):
-                    response.plan = [PlanStep.model_validate(item) for item in plan_data]
+                data = extract_json(blueprint_raw)
+                if data:
+                    response.blueprint = WorkflowManifest.model_validate(data)
             except Exception as e:
-                # Log warning but don't fail the whole parse? 
-                # For strict protocol, maybe we should fail.
-                pass
-            text = text.replace(plan_match.group(0), "")
+                response.errors.append(f"[Blueprint 解析失败] 结构不符合契约: {str(e)}")
 
-        # 3. Extract Calls
-        calls_match = re.search(r"<calls>(.*?)</calls>", text, re.DOTALL)
-        if calls_match:
-            calls_content = calls_match.group(1).strip()
+        # 3. 解析派发项 (Dispatch)
+        dispatch_raw = ProtocolParser._extract_tag(text, "dispatch")
+        if dispatch_raw:
             try:
-                calls_data = extract_json(calls_content)
-                # Support {"calls": [...]} or just [...]
-                if isinstance(calls_data, dict) and "calls" in calls_data:
-                    calls_list = calls_data["calls"]
-                elif isinstance(calls_data, list):
-                    calls_list = calls_data
+                data = extract_json(dispatch_raw)
+                if isinstance(data, list):
+                    for idx, item in enumerate(data):
+                        try:
+                            response.dispatch.append(DispatchItem.model_validate(item))
+                        except Exception as e:
+                            response.errors.append(f"[Dispatch 项 {idx} 校验失败] 字段缺失或类型错误: {str(e)}")
                 else:
-                    calls_list = []
-                
-                response.calls = [ProtocolCall.model_validate(item) for item in calls_list]
-            except Exception:
-                pass
-            text = text.replace(calls_match.group(0), "")
+                    response.errors.append("[Dispatch 格式错误] 内容必须是一个 JSON 列表。")
+            except Exception as e:
+                response.errors.append(f"[Dispatch 解析失败] 无法提取合法的 JSON: {str(e)}")
 
-        # 3.1 Extract Tool Calls
-        tool_calls_match = re.search(r"<tool_calls>(.*?)</tool_calls>", text, re.DOTALL)
-        if tool_calls_match:
-            tool_calls_content = tool_calls_match.group(1).strip()
-            try:
-                tool_calls_data = extract_json(tool_calls_content)
-                if isinstance(tool_calls_data, list):
-                    response.tool_calls = [ProtocolAction.model_validate(item) for item in tool_calls_data]
-            except Exception:
-                pass
-            text = text.replace(tool_calls_match.group(0), "")
-
-        # 4. Extract Metadata (Optional, mostly for removal)
-        metadata_match = re.search(r"<metadata>(.*?)</metadata>", text, re.DOTALL)
-        if metadata_match:
-            text = text.replace(metadata_match.group(0), "")
-
-        # 5. Remaining text is Content
-        response.content = text.strip()
-        
-        # Fallback: if empty content but thought exists, maybe just return.
-        
         return response
 
     @staticmethod
+    def _extract_tag(text: str, tag: str) -> Optional[str]:
+        pattern = rf"<\s*{tag}\s*>(.*?)</\s*{tag}\s*>"
+        match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
+        if match:
+            content = match.group(1).strip()
+            json_block = re.search(r"```json\s*(.*?)\s*```", content, re.DOTALL | re.IGNORECASE)
+            return json_block.group(1).strip() if json_block else content
+        return None
+
+    @staticmethod
     def strip_protocol(text: str) -> str:
-        """移除所有协议标签，仅保留自然语言内容。"""
-        # 使用 count=0 (默认) 确保移除所有匹配项
-        clean_text = re.sub(r"<thought>.*?</thought>", "", text, flags=re.DOTALL)
-        clean_text = re.sub(r"<plan>.*?</plan>", "", clean_text, flags=re.DOTALL)
-        clean_text = re.sub(r"<calls>.*?</calls>", "", clean_text, flags=re.DOTALL)
-        clean_text = re.sub(r"<tool_calls>.*?</tool_calls>", "", clean_text, flags=re.DOTALL)
-        clean_text = re.sub(r"<metadata>.*?</metadata>", "", clean_text, flags=re.DOTALL)
-        return clean_text.strip()
+        res = ProtocolParser.parse(text)
+        parts = []
+        if res.interaction: parts.append(res.interaction)
+        if res.conclusion: parts.append(res.conclusion)
+        return "\n\n".join(parts)

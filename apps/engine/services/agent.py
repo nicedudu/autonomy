@@ -1,33 +1,20 @@
-from typing import Any, Dict
-
+from typing import Dict, Any, Optional
 from services.base import BaseService
-
 
 class AgentService(BaseService):
     """
-    智能体配置管理服务。
+    智能体业务服务。
+    负责处理 Agent 相关的持久化数据检索与状态管理。
     """
 
-    def get_agent_config(self, identifier: str) -> Dict[str, Any]:
+    def get_agent_config(self, agent_id: str) -> Optional[Dict[str, Any]]:
         """
-        获取智能体详情及其关联的 LLM 供应商信息。
+        从数据库检索指定智能体的算力配置。
+        
+        关联检索：agents 表与 llm_providers 表进行 Inner Join。
         """
         response = self.supabase.table("agents").select(
             "*, llm_providers(*)"
-        ).eq("identifier", identifier).execute()
-
-        if not response.data:
-            raise RuntimeError(f"未找到智能体: {identifier}")
-        return response.data[0]
-
-    def get_prompt_template(self, agent_identifier: str, is_system: bool = True) -> str:
-        """
-        获取指定智能体的提示词模板内容。
-        """
-        column = "system_prompt" if is_system else "user_prompt"
-        response = self.supabase.table("agents").select(
-            column).eq("identifier", agent_identifier).execute()
-
-        if not response.data or not response.data[0].get(column):
-            raise RuntimeError(f"未找到智能体提示词模板: {agent_identifier}")
-        return response.data[0].get(column)
+        ).eq("identifier", agent_id).execute()
+        
+        return response.data[0] if response.data else None

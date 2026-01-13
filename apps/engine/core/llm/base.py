@@ -1,35 +1,49 @@
-import asyncio
+"""
+LLM 供应商抽象基座 (LLM Provider Base Specification)
+
+本模块定义了模型适配器的标准化接口，采用适配器模式（Adapter Pattern）屏蔽底层不同推理引擎的差异。
+职责：强制执行统一的推理行为契约，不持有任何特定厂商的协议实现细节。
+"""
+
 from abc import ABC, abstractmethod
 from typing import AsyncGenerator, List, Optional
-from .schema import LLMMessage, LLMResponse
+
+from .schema import LLMMessage, LLMResponse, InferenceConfig
 
 class BaseLLMProvider(ABC):
-    """LLM 供应商抽象基类。
+    """
+    LLM 供应商抽象基类。
     
-    确立供应商适配器的标准化接口契约。
+    定义了算力供应商必须遵守的接口标准。
+    具体的协议转换（如 LLMMessage 转换为厂商私有格式）应由子类实现私有处理。
     """
 
-    def __init__(self, api_key: str, base_url: str, **kwargs):
+    def __init__(self, model: str, api_key: str, base_url: str, **kwargs):
+        """
+        初始化供应商基础配置。
+        """
+        self.model = model
         self.api_key = api_key
         self.base_url = base_url
-        self.config = kwargs
+        self.client_options = kwargs
 
     @abstractmethod
     async def generate(
         self, 
         messages: List[LLMMessage], 
         system: Optional[str] = None, 
-        **kwargs
+        config: Optional[InferenceConfig] = None
     ) -> LLMResponse:
-        """执行异步全量推理。
+        """
+        异步全量推理接口。
         
         Args:
-            messages: 符合协议的消息序列。
-            system: 可选的系统级指令（System Prompt）。
-            **kwargs: 动态推理参数。
+            messages: 标准化消息序列。
+            system: 可选的系统级全局指令。
+            config: 推理采样配置。
             
         Returns:
-            LLMResponse: 标准响应对象。
+            LLMResponse: 归一化后的响应结果。
         """
         pass
 
@@ -38,17 +52,11 @@ class BaseLLMProvider(ABC):
         self, 
         messages: List[LLMMessage], 
         system: Optional[str] = None, 
-        **kwargs
+        config: Optional[InferenceConfig] = None
     ) -> AsyncGenerator[str, None]:
-        """执行异步流式推理。
         """
-        pass
-
-    def generate_sync(self, messages: List[LLMMessage], system: Optional[str] = None, **kwargs) -> LLMResponse:
-        """全量推理的同步包装器。"""
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        return loop.run_until_complete(self.generate(messages, system=system, **kwargs))
+        异步流式推理接口。
+        
+        通过生成器实时吐出增量文本内容。
+        """
+        yield ""

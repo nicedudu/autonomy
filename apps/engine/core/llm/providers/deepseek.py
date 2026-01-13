@@ -1,8 +1,9 @@
 """
-通用 OpenAI 兼容适配器 (Generic OpenAI-Compatible Provider)
+DeepSeek 算力供应商实现 (DeepSeek Provider Implementation)
 
-本模块提供了一个通用的适配器，用于对接任何遵循 OpenAI Chat Completion 协议的标准接口。
-适用于本地推理引擎（Ollama, vLLM, Llama.cpp）以及第三方中转服务。
+本模块实现了针对 DeepSeek API 的优化适配。
+虽然 DeepSeek 兼容 OpenAI 协议，但本适配器额外支持了其特有的
+推理模型思维链 (Reasoning Content) 提取。
 """
 
 import json
@@ -18,12 +19,13 @@ from core.llm.schema import (
     ToolCall
 )
 
-class OpenAICompatibleProvider(BaseLLMProvider):
+class DeepSeekProvider(BaseLLMProvider):
     """
-    通用 OpenAI 兼容协议适配器。
+    DeepSeek 协议适配器。
+    在标准 OpenAI 协议基础上增强了对推理内容的审计。
     """
 
-    def __init__(self, model: str, api_key: str, base_url: str, **kwargs):
+    def __init__(self, model: str, api_key: str, base_url: str = "https://api.deepseek.com", **kwargs):
         super().__init__(model, api_key, base_url, **kwargs)
         self.client = AsyncOpenAI(
             api_key=api_key,
@@ -37,23 +39,29 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         system: Optional[str] = None, 
         config: Optional[InferenceConfig] = None
     ) -> LLMResponse:
+        """
+        全量推理，支持提取 reasoning_content。
+        """
         config = config or InferenceConfig()
-        payload = self._to_raw_payload(messages, system)
+        payload = self._to_dict_payload(messages, system)
         
         response = await self.client.chat.completions.create(
             model=self.model,
             messages=payload,
             temperature=config.temperature,
-            top_p=config.top_p,
-            max_tokens=config.max_tokens,
             stream=False,
             **config.extra_params
         )
 
         choice = response.choices[0]
+        message = choice.message
+        
+        # 提取 DeepSeek 特有的思维链内容
+        reasoning = getattr(message, "reasoning_content", None)
+
         return LLMResponse(
-            content=choice.message.content,
-            tool_calls=self._parse_tool_calls(choice.message.tool_calls) if hasattr(choice.message, "tool_calls") and choice.message.tool_calls else None,
+            content=message.content,
+            tool_calls=self._parse_tool_calls(message.tool_calls) if message.tool_calls else None,
             model=response.model,
             usage=LLMUsage(
                 prompt_tokens=response.usage.prompt_tokens,
@@ -61,7 +69,8 @@ class OpenAICompatibleProvider(BaseLLMProvider):
                 total_tokens=response.usage.total_tokens
             ),
             finish_reason=choice.finish_reason,
-            raw=response
+            # 将思维链存入 raw 以外的元数据空间（如果 schema 允许扩展，目前存入 raw）
+            raw={"original": response, "reasoning": reasoning}
         )
 
     async def stream(
@@ -70,8 +79,11 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         system: Optional[str] = None, 
         config: Optional[InferenceConfig] = None
     ) -> AsyncGenerator[str, None]:
+        """
+        流式推理，过滤掉推理内容，仅输出最终回复。
+        """
         config = config or InferenceConfig()
-        payload = self._to_raw_payload(messages, system)
+        payload = self._to_dict_payload(messages, system)
 
         stream = await self.client.chat.completions.create(
             model=self.model,
@@ -84,18 +96,20 @@ class OpenAICompatibleProvider(BaseLLMProvider):
             if chunk.choices and chunk.choices[0].delta.content:
                 yield chunk.choices[0].delta.content
 
-    def _to_raw_payload(self, messages: List[LLMMessage], system: Optional[str]) -> List[Dict[str, Any]]:
-        """标准化协议转换。"""
+    def _to_dict_payload(self, messages: List[LLMMessage], system: Optional[str]) -> List[Dict[str, Any]]:
+        """内部转换逻辑。"""
         payload = []
         if system:
             payload.append({"role": "system", "content": system})
         for msg in messages:
-            payload.append({"role": msg.role.value, "content": msg.content})
+            item = {"role": msg.role.value, "content": msg.content}
+            if msg.name:
+                item["name"] = msg.name
+            payload.append(item)
         return payload
 
-    def _parse_tool_calls(self, raw_tool_calls: Any) -> List[ToolCall]:
-        """解析兼容协议中的工具调用。"""
-        if not raw_tool_calls: return []
+    def _parse_tool_calls(self, raw_tool_calls: List[Any]) -> List[ToolCall]:
+        """解析工具调用。"""
         parsed = []
         for tc in raw_tool_calls:
             try:

@@ -1,47 +1,28 @@
-from fastapi import APIRouter
-from core.registry.manager import discovery_service
+from fastapi import APIRouter, HTTPException
+from core.agent.registry import agent_registry
 
-router = APIRouter(prefix="/api", tags=["Agents"])
+router = APIRouter(prefix="/agent", tags=["agent"])
 
-@router.get("/agents")
-async def get_agents():
+@router.get("/list")
+async def list_available_agents():
     """
-    获取本地注册中心的所有智能体。
-    返回包含身份、角色、能力及模型配置的智能体清单。
+    列出当前物理目录中发现的所有可用智能体。
     """
     try:
-        agents = discovery_service.get_all_agents()
-        return [
-            {
-                "id": m.agent_id,
-                "identifier": m.agent_id,
-                "name": m.name,
-                "role": m.role,
-                "capabilities": m.capabilities,
-                "avatar": f"https://api.dicebear.com/7.x/avataaars/svg?seed={m.agent_id}"
-            }
-            for m in agents.values()
-        ]
+        agents = agent_registry.get_agents()
+        return {
+            "status": "success",
+            "agents": agents
+        }
     except Exception as e:
-        return {"error": str(e)}
+        raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/skills")
-async def get_skills():
+@router.get("/{agent_id}/profile")
+async def get_agent_details(agent_id: str):
     """
-    获取注册中心可用的专项技能。
-    返回技能的元数据、描述及执行指令。
+    检索指定智能体的规格详情。
     """
-    try:
-        skills = discovery_service.skills.all()
-        return [
-            {
-                "id": skill_id,
-                "name": s.name,
-                "description": s.description,
-                "metadata": s.metadata,
-                "instructions": s.instructions
-            }
-            for skill_id, s in skills.items()
-        ]
-    except Exception as e:
-        return {"error": str(e)}
+    profile = agent_registry.get_profile(agent_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail=f"智能体 {agent_id} 未找到。")
+    return profile

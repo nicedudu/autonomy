@@ -1,28 +1,54 @@
-from tools.web_search import web_search
-from tools.web_fetch import web_fetch
-from tools.planning import planning
-from tools.file_ops import list_files, read_file, write_file
-from core.tools.system_tools import read_artifact_tool
+"""
+原子工具箱全量定义 (Autonomy Toolbelt Registry)
 
-# 核心工具原始列表 (已移除高危的 python_execute 和 terminal_execute)
-CORE_TOOLS_RAW = [
-    web_search,
-    web_fetch,
-    planning,
-    list_files,
-    read_file,
-    write_file,
-    read_artifact_tool
+按领域模型整合并导出所有受控原子工具。
+本模块负责将工具函数与全局注册表（ToolRegistry）进行绑定。
+"""
+
+from core.tools.registry import tool_registry
+
+# 1. 导入各领域重构后的工具集
+from tools.workspace import list_workspace_files, read_workspace_file, write_workspace_file
+from tools.internet import search_internet, fetch_web_page
+from tools.kernel import get_artifact_content
+from tools.task import manage_task_steps
+
+# 2. 声明生产环境核心工具集 (Manifest)
+PRODUCTION_TOOLS = [
+    # 工作空间管理
+    list_workspace_files,
+    read_workspace_file,
+    write_workspace_file,
+    
+    # 互联网能力
+    search_internet,
+    fetch_web_page,
+    
+    # 内核支撑
+    get_artifact_content,
+    
+    # 任务追踪
+    manage_task_steps
 ]
 
-# 标准化提取 BaseTool 对象
-CORE_TOOLS = []
-for item in CORE_TOOLS_RAW:
-    if hasattr(item, "__tool__"):
-        CORE_TOOLS.append(item.__tool__)
-    else:
-        CORE_TOOLS.append(item)
+# 3. 自动化注册至全局单例
+for tool_func in PRODUCTION_TOOLS:
+    tool_registry.register(tool_func)
 
-def get_core_tool_schemas():
-    """生成所有核心工具的 OpenAI 兼容定义格式。"""
-    return [t.to_dict() for t in CORE_TOOLS]
+def get_registered_tool_schemas():
+    """
+    导出所有已注册工具的 OpenAI 兼容 JSON Schema。
+    """
+    return tool_registry.get_schemas()
+
+# 导出符号，确保 API 或 Runtime 层可直接调用
+__all__ = [
+    "list_workspace_files",
+    "read_workspace_file",
+    "write_workspace_file",
+    "search_internet",
+    "fetch_web_page",
+    "get_artifact_content",
+    "manage_task_steps",
+    "get_registered_tool_schemas"
+]

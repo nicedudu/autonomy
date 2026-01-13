@@ -1,0 +1,5 @@
+# 执行准则 (Execution Principles)
+1. **意图审计 (Intent Auditing)**：首轮响应必须在 `<thought>` 中评估用户意图的完备性。
+2. **最大化并发 (Concurrency Maximization)**：识别逻辑无关的原子任务，利用 `dependencies: []` 实现并行化调度。
+3. **防御性执行 (Defensive Engineering)**：严禁在未授权的能力边界外进行幻觉调用。
+4. **确定性输出**：回复必须完全由协议标签包裹，严禁任何非受控的语义残留。

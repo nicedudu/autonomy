@@ -11,9 +11,13 @@ async def lifespan(app: FastAPI):
     """
     管理应用程序的生命周期。
     """
-    # --- 启动逻辑 ---
-    from core.registry.manager import discovery_service
-    discovery_service.initialize()
+    # --- 启动逻辑：各领域自举发现 ---
+    from core.agent.registry import agent_registry
+    from core.tools.registry import tool_registry
+    
+    # 打印能力清单进行初始化审计
+    print(f"[Lifespan] 系统能力自举完成:")
+    print(f"  - 可用智能体: {agent_registry.get_agents()}")
     
     def bus_to_ui_callback(message):
         """将内部总线消息实时转发至 WebSocket 发送队列。"""
@@ -38,7 +42,6 @@ def create_app() -> FastAPI:
     """
     app = FastAPI(title="Autonomy Engine API", version="4.0.0", lifespan=lifespan)
 
-    # 配置跨域资源共享
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -46,7 +49,6 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # 挂载业务路由
     app.include_router(agent.router)
     app.include_router(chat.router)
 
@@ -62,5 +64,4 @@ def create_app() -> FastAPI:
 
     return app
 
-# 全局 App 实例
 app = create_app()

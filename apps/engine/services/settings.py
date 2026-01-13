@@ -8,7 +8,7 @@ class SettingsService(BaseService):
 
     def get_system_settings(self) -> Dict[str, Any]:
         """
-        加载系统默认配置及全局供应商设置。
+        加载系统全局默认配置。
         """
         response = self.supabase.table("system_settings").select(
             "*, llm_providers(*)"

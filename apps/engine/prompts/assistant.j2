@@ -1,0 +1,38 @@
+{# 1. 身份锚定 #}
+{% include "identity.j2" %}
+
+{# 2. 执行准则 #}
+{% include "principles.j2" %}
+
+{# 3. 编排协议与能力授权 #}
+{% include "orchestration.j2" %}
+
+{# 4. 实时状态感知 (状态机看板) #}
+# 任务看板 (Mission Dashboard)
+{% if workflow_progress %}
+以下是当前任务编排的实时进度。请基于此状态评估：
+1. 哪些节点已完成（COMPLETED），其结果如何？
+2. 哪些节点已就绪（READY）或待处理（PENDING）？
+3. 是否所有目标已达成，可输出 <conclusion>？
+
+{{ workflow_progress }}
+{% else %}
+(暂无活跃任务)
+{% endif %}
+
+{# 5. 记忆快照 #}
+{% if history_summary %}
+# 对话历史摘要 (Memory Snapshot)
+以下是早期对话内容的语义浓缩，请结合此背景进行后续决策：
+{{ history_summary }}
+{% endif %}
+
+{# 6. 格式样本 (置于末尾以最强化记忆) #}
+{% include "examples.j2" %}
+
+{% if few_shot_context %}
+### 业务特定参考
+{{ few_shot_context }}
+{% endif %}
+
+请基于用户输入开始任务编排：

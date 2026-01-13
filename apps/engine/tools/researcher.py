@@ -1,11 +1,13 @@
 from typing import Any, Dict
+
 from core.tools.base import tool
+
 
 @tool()
 async def researcher(query: str) -> Dict[str, Any]:
     """
     深度调研专家。
-    
+
     Args:
         query: 主题。
     """
