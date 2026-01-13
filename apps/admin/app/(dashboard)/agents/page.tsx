@@ -217,7 +217,7 @@ export default function AdminAgentsThemeAligned() {
                                 </div>
                                 <div className="truncate flex-1">
                                     <div
-                                        className={`text-sm truncate leading-tight ${
+                                        className={`text-sm truncate leading-tight ellipsis w-0 min-w-full ${
                                             selectedAgent?.identifier ===
                                             agent.identifier
                                                 ? "text-primary"
@@ -226,7 +226,7 @@ export default function AdminAgentsThemeAligned() {
                                     >
                                         {agent.name}
                                     </div>
-                                    <div className="text-xs text-muted-foreground font-mono tracking-tighter truncate mt-0.5">
+                                    <div className="text-xs text-muted-foreground font-mono tracking-tighter truncate mt-0.5 ellipsis w-0 min-w-full ">
                                         {agent.role}
                                     </div>
                                 </div>

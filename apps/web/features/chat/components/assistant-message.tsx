@@ -1,13 +1,11 @@
 "use client";
 
-import { 
-    Zap
-} from "lucide-react";
+import { Zap } from "lucide-react";
 import { useMemo } from "react";
-import { MarkdownRenderer } from "./MarkdownRenderer";
+import { MarkdownRenderer } from "./markdown-renderer";
 import { parseProtocol } from "@/lib/stream-parser";
-import { ThoughtWidget } from "./ThoughtWidget";
-import { PlanWidget } from "./PlanWidget";
+import { ThoughtWidget } from "./thought-widget";
+import { PlanWidget } from "./plan-widget";
 
 interface MessageType {
     id: string;

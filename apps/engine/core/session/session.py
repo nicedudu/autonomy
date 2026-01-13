@@ -48,11 +48,11 @@ class Session(BaseModel):
         return self.metadata.get(key, default)
 
     @classmethod
-    def create_root(cls, user_id: Optional[str] = None) -> "Session":
+    def create_root(cls, user_id: Optional[str] = None, session_id: Optional[str] = None) -> "Session":
         """
         工厂方法：创建根会话（任务树的起点）。
         """
-        sid = str(uuid.uuid4())
+        sid = session_id or str(uuid.uuid4())
         return cls(id=sid, root_id=sid, user_id=user_id)
 
     def create_child(self) -> "Session":

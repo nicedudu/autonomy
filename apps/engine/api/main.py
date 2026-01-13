@@ -51,6 +51,8 @@ def create_app() -> FastAPI:
 
     app.include_router(agent.router)
     app.include_router(chat.router)
+    from api.routes import websocket as ws_router
+    app.include_router(ws_router.router)
 
     @app.websocket("/ws/ops")
     async def websocket_endpoint(websocket: WebSocket):

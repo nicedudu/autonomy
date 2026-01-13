@@ -1,19 +1,27 @@
 from fastapi import APIRouter, HTTPException
 from core.agent.registry import agent_registry
 
-router = APIRouter(prefix="/agent", tags=["agent"])
+router = APIRouter(prefix="/api/agents", tags=["agent"])
 
-@router.get("/list")
+@router.get("")
 async def list_available_agents():
     """
     列出当前物理目录中发现的所有可用智能体。
     """
     try:
-        agents = agent_registry.get_agents()
-        return {
-            "status": "success",
-            "agents": agents
-        }
+        agent_ids = agent_registry.get_agents()
+        agents = []
+        for aid in agent_ids:
+            profile = agent_registry.get_profile(aid)
+            if profile:
+                agents.append({
+                    "id": aid,
+                    "identifier": aid,
+                    "name": profile.name,
+                    "role": profile.role_description,
+                    "avatar": f"https://api.dicebear.com/7.x/bottts/svg?seed={aid}"
+                })
+        return agents
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

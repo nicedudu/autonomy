@@ -84,17 +84,44 @@ class AgentExecutor:
             
             # C. 发起流式推理
             full_response = ""
+            from core.protocol.parser import ProtocolStreamFilter
+            stream_filter = ProtocolStreamFilter()
+            
             async for chunk in llm_client.stream(
                 messages=messages, 
                 system=system_prompt,
                 config=InferenceConfig(**profile.inference_params)
             ):
                 full_response += chunk
-                yield {"type": "stream", "content": chunk}
+                
+                # 【可视化过滤】：仅将允许的标签内容发送给前端
+                filtered_content = stream_filter.parse_chunk(chunk)
+                if filtered_content:
+                    yield {
+                        "type": "stream", 
+                        "content": filtered_content,
+                        "agent_id": agent.agent_id
+                    }
 
             # D. 解析响应意图
             proto = self.parser.parse(full_response)
             
+            # 【可视化增强】：发布实时思维与交互事件到总线
+            from core.communication_bus import bus
+            await bus.publish("thought_emitted", {
+                "session_id": session.id,
+                "agent_id": agent.agent_id,
+                "thought": proto.thought,
+                "interaction": proto.interaction
+            })
+
+            # 【可视化增强】：只要有蓝图产出，立即同步给 UI
+            if proto.blueprint:
+                await bus.publish("topology_update", {
+                    "session_id": session.id,
+                    "blueprint": proto.blueprint.model_dump()
+                })
+
             # 触发: post_inference
             for mw in middlewares:
                 await mw.post_inference(session, proto)
@@ -111,6 +138,12 @@ class AgentExecutor:
                 )
                 session.add_message(AgentMessage(role=MessageRole.TOOL, content=error_feedback, name="protocol_auditor"))
                 yield {"type": "status", "content": "检测到指令格式违约，正在引导模型修正..."}
+                
+                # 发布违约事件
+                await bus.publish("protocol_error", {
+                    "session_id": session.id,
+                    "errors": proto.errors
+                })
                 continue 
 
             # E. 决策路径分发
@@ -126,6 +159,12 @@ class AgentExecutor:
                     continue
 
                 session.update_metadata("status", AgentStatus.ACTING)
+                
+                # 【可视化增强】：发布全量拓扑蓝图到总线，驱动 ReactFlow 绘图
+                await bus.publish("topology_update", {
+                    "session_id": session.id,
+                    "blueprint": proto.blueprint.model_dump()
+                })
                 
                 # 诊断：记录分发动作
                 print(f"\033[93m[Executor Trace] 检测到调度意图，准备驱动 Pipeline。待执行节点数: {len(proto.dispatch)}\033[0m")
@@ -157,6 +196,12 @@ class AgentExecutor:
                         local_nodes[node_id]["status"] = "COMPLETED" if result.status == "success" else "FAILED"
                         local_nodes[node_id]["output"] = result.output if result.status == "success" else result.error
                 session.update_metadata("session_blueprint_nodes", local_nodes)
+
+                # 【可视化增强】：发布节点执行结果更新
+                await bus.publish("execution_snapshot", {
+                    "session_id": session.id,
+                    "nodes": list(local_nodes.values())
+                })
 
                 # 1. 回注执行结果 (不再过滤，捕获 Pipeline 全量产出)
                 print(f"\033[93m[Executor Trace] Pipeline 执行结束。正在回注所有观测结果...\033[0m")

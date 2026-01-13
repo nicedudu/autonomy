@@ -13,7 +13,7 @@ class SessionManager:
     def __init__(self):
         self._sessions: Dict[str, Session] = {}
 
-    def create_session(self, user_id: Optional[str] = None, parent_id: Optional[str] = None) -> Session:
+    def create_session(self, user_id: Optional[str] = None, parent_id: Optional[str] = None, session_id: Optional[str] = None) -> Session:
         """
         初始化一个会话。
         """
@@ -21,7 +21,7 @@ class SessionManager:
             parent = self._sessions[parent_id]
             new_session = parent.create_child()
         else:
-            new_session = Session.create_root(user_id=user_id)
+            new_session = Session.create_root(user_id=user_id, session_id=session_id)
             
         self._sessions[new_session.id] = new_session
         return new_session

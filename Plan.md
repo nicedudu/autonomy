@@ -41,33 +41,24 @@ Autonomy V4.0 是一个基于 **“递归编排 (Recursive Orchestration)”** �
 | **Phase 4** | **递归与造物** | ✅ 完成 | `agent/architect.py`, `dispatcher.py` (递归逻辑) |
 | **Phase 5** | **记忆与上下文** | ✅ 完成 | 实现 `ContextMiddleware` 与滑动窗口摘要 |
 | **Phase 6** | **物理沙箱** | ⏳ 待启动 | 需实现 Docker/WASM 执行环境 |
-| **Phase 7** | **架构稳定性排查与重构** | 🚀 进行中 | 实施显性状态看板，解决 8B 模型逻辑断层 |
+| **Phase 7** | **架构稳定性排查与重构** | ✅ 完成 | 实施显性状态看板，解决 8B 模型逻辑断层 |
+| **Phase 8** | **控制面板可视化** | 🚀 进行中 | 基于 ReactFlow 与 WebSocket 实现执行全流程监控 |
 
 ---
 
-## 6. 架构稳定性排查与重构 (Architecture Stabilization) - 2026-01-13
+## 7. 控制面板可视化 (Mission Control Visualization) - 2026-01-13
 
-### 核心目标：构建“感知-执行-反馈”的显性闭环
+### 目标：将“显性状态看板”转化为 Web UI 上的动态拓扑图
 
-1.  **状态感知层重构 (Compiler Layer)**:
-    *   [ ] 在 `PromptCompiler` 中实现 `Dynamic State Fusion`。
-    *   [ ] 确保任务看板 JSON 包含 `status` 与 `output_snapshot` 字段。
-2.  **执行反馈闭环 (Executor Layer)**:
-    *   [ ] 在 `AgentExecutor` 任务分发后强制同步 `Pipeline Snapshot` 到 Session 元数据。
-    *   [ ] 优化 `_fuse_orchestration` 逻辑，支持状态增量合并。
-3.  **提示词降噪 (Prompt Refactoring)**:
-    *   [ ] 合并冗余的任务进度展示区域。
-    *   [ ] 精简协议禁令，提升 8B 模型有效注意力。
+1.  **后端数据协议增强 (Backend Events)**:
+    *   [ ] 在 `AgentExecutor` 中新增 `snapshot` 事件类型。
+    *   [ ] 事件载荷需包含：`session_id`, `nodes` (含 status/result), `links` (依赖关系)。
+2.  **前端可视化基座 (Frontend Core)**:
+    *   [ ] 在 `apps/admin` 页面中集成 `Reactflow`。
+    *   [ ] 实现 `ExecutionNode` 自定义节点，支持状态呼吸灯效果。
+3.  **流式日志监控 (Log Streaming)**:
+    *   [ ] 实时转发 `RAW_PROMPT` 到前端调试窗口。
 
-
-当前系统已经具备了强大的“逻辑编排”能力，但在面对超长对话时仍面临 Context Window 限制。
-
-**立即启动的任务：阶段五 - 分层记忆引擎**
-1.  **ContextMiddleware**: 实现 `pre_inference` 钩子，对 `session.history` 进行滑动窗口裁剪。
-2.  **Summary Engine**: 引入异步摘要机制，将被裁剪的历史转化为 `Summary Artifact` 重新注入 Prompt。
-3.  **Vector Store**: 为长期记忆引入向量检索能力。
-
----
 
 ## 5. 工程准则与反思 (Engineering Principles)
 

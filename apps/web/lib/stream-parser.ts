@@ -138,13 +138,26 @@ export function parseProtocol(text: string): ParsedProtocol {
   }
 
   // 4. Cleanup content for display
-  result.content = text
+  // Also support extracting interaction and conclusion tags as main content
+  let mainContent = text;
+  const interactionMatch = /<interaction>([\s\S]*?)(?:<\/interaction>|$)/i.exec(text);
+  const conclusionMatch = /<conclusion>([\s\S]*?)(?:<\/conclusion>|$)/i.exec(text);
+  
+  if (conclusionMatch) {
+      mainContent = conclusionMatch[1].trim();
+  } else if (interactionMatch) {
+      mainContent = interactionMatch[1].trim();
+  }
+
+  result.content = mainContent
     .replace(/<thought>[\s\S]*?(?:<\/thought>|$)/gi, "")
     .replace(/<plan>[\s\S]*?(?:<\/plan>|$)/gi, "")
     .replace(/<calls>[\s\S]*?(?:<\/calls>|$)/gi, "")
+    .replace(/<interaction>[\s\S]*?(?:<\/interaction>|$)/gi, "")
+    .replace(/<conclusion>[\s\S]*?(?:<\/conclusion>|$)/gi, "")
     .replace(/<tool_calls>[\s\S]*?(?:<\/tool_calls>|$)/gi, "")
     .replace(/<metadata>[\s\S]*?(?:<\/metadata>|$)/gi, "")
-    .replace(/```json[\s\S]*?(?:```|$)/gi, "") // Also strip JSON block if used as fallback
+    .replace(/```json[\s\S]*?(?:```|$)/gi, "")
     .trim();
 
   return result;

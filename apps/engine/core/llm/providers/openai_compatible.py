@@ -1,10 +1,3 @@
-"""
-通用 OpenAI 兼容适配器 (Generic OpenAI-Compatible Provider)
-
-本模块提供了一个通用的适配器，用于对接任何遵循 OpenAI Chat Completion 协议的标准接口。
-适用于本地推理引擎（Ollama, vLLM, Llama.cpp）以及第三方中转服务。
-"""
-
 import json
 from typing import AsyncGenerator, List, Optional, Any, Dict
 from openai import AsyncOpenAI

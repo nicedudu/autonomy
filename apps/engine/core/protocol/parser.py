@@ -16,6 +16,72 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
 
+class ProtocolStreamFilter:
+    """
+    流式协议过滤器。
+    在 LLM 输出过程中实时过滤掉技术标签，仅保留允许展示给用户的内容。
+    支持标签透传以便前端解析器二次处理。
+    """
+    def __init__(self):
+        # 允许流向前端的标签
+        self.allowed_tags = ["thought", "interaction", "conclusion"]
+        self.buffer = ""
+        self.current_tag = None
+        self.tag_pattern = re.compile(r"<(/?)\s*(\w+)\s*>")
+
+    def parse_chunk(self, chunk: str) -> str:
+        """
+        处理新的数据块，返回应发送给前端的文本。
+        """
+        self.buffer += chunk
+        output = ""
+        
+        while True:
+            match = self.tag_pattern.search(self.buffer)
+            if not match:
+                # 如果没有发现完整标签，且当前在允许的标签内，则尝试输出
+                if self.current_tag in self.allowed_tags:
+                    # 保留末尾防止标签截断
+                    safe_len = max(0, len(self.buffer) - 15)
+                    if safe_len > 0:
+                        output += self.buffer[:safe_len]
+                        self.buffer = self.buffer[safe_len:]
+                elif self.current_tag is not None:
+                    # 如果当前在禁止的标签内，直接清空 buffer（除了可能的标签前缀）
+                    # 查找最后一个 '<'
+                    last_lt = self.buffer.lastIndexOf('<') if hasattr(self.buffer, 'lastIndexOf') else self.buffer.rfind('<')
+                    if last_lt != -1:
+                        self.buffer = self.buffer[last_lt:]
+                    else:
+                        self.buffer = ""
+                break
+            
+            tag_start = match.start()
+            is_closing = match.group(1) == "/"
+            tag_name = match.group(2).lower()
+            
+            # 处理标签前的内容
+            pre_text = self.buffer[:tag_start]
+            if self.current_tag in self.allowed_tags:
+                output += pre_text
+            
+            # 状态转换
+            full_tag = match.group(0)
+            if is_closing:
+                if tag_name == self.current_tag:
+                    if tag_name in self.allowed_tags:
+                        output += full_tag
+                    self.current_tag = None
+            else:
+                self.current_tag = tag_name
+                if tag_name in self.allowed_tags:
+                    output += full_tag
+            
+            # 消耗已处理内容
+            self.buffer = self.buffer[match.end():]
+            
+        return output
+
 class ProtocolParser:
     """
     V4.0 编排协议解析器。

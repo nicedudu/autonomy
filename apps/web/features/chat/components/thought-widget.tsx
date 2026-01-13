@@ -6,7 +6,7 @@ import {
     ChevronRight
 } from "lucide-react";
 import { useState } from "react";
-import { MarkdownRenderer } from "./MarkdownRenderer";
+import { MarkdownRenderer } from "./markdown-renderer";
 
 interface ThoughtWidgetProps {
     thought: string;
@@ -51,7 +51,7 @@ export function ThoughtWidget({ thought, isClosed }: ThoughtWidgetProps) {
             </button>
             {isExpanded && (
                 <div className="px-4 pb-3 text-xs leading-relaxed text-muted-foreground/60 italic font-medium border-t border-border/20 pt-2 break-all">
-                    <MarkdownRenderer content={thought} compact />
+                    <MarkdownRenderer content={thought} />
                 </div>
             )}
         </div>

@@ -1,9 +1,10 @@
+
 "use client";
 
 import { Button } from "@autonomy/ui/components/button";
 import { ChevronDown, Sparkles } from "lucide-react";
 import { RefObject } from "react";
-import { AssistantMessage } from "./AssistantMessage";
+import { AssistantMessage } from "./assistant-message";
 
 interface MessageType {
     id: string;
@@ -35,28 +36,23 @@ export function MessageList({
     hasNewMessages,
     onScrollToBottom,
 }: MessageListProps) {
-    // We need to pass the ref to the viewport element of the ScrollArea,
-    // but the shadcn ScrollArea component encapsulates it. 
-    // So we'll use a standard div with overflow for now to maintain direct ref control 
-    // which is crucial for the scrolling logic passed from parent.
-    
     return (
         <div className="flex-1 min-h-0 relative flex flex-col bg-muted/5">
             <div 
                 ref={viewportRef}
                 onScroll={onScroll}
-                className="flex-1 overflow-y-auto w-full scroll-smooth"
+                className="flex-1 overflow-y-auto w-full" 
             >
                 <div className="p-6 space-y-8 pb-12 min-h-full">
                     {messages.length === 0 && (
                         <div className="space-y-4">
                             <div className="flex items-center gap-3 text-primary">
                                 <Sparkles size={20} />
-                                <h3 className="text-sm font-bold uppercase">
-                                    就绪
+                                <h3 className="text-sm font-bold uppercase tracking-wider">
+                                    READY
                                 </h3>
                             </div>
-                            <p className="text-xs font-medium text-muted-foreground">
+                            <p className="text-xs font-medium text-muted-foreground/40">
                                 请输入指令启动策略分析。
                             </p>
                         </div>
@@ -91,20 +87,15 @@ export function MessageList({
                     <Button
                         size="sm"
                         onClick={onScrollToBottom}
-                        className="rounded-full bg-primary text-primary-foreground text-[10px] font-bold gap-2 h-9 px-4"
+                        className="rounded-full bg-primary text-primary-foreground text-[10px] font-bold gap-2 h-9 px-4 shadow-xl border-none animate-in fade-in zoom-in slide-in-from-bottom-2"
                     >
                         {hasNewMessages ? (
-                            <Sparkles
-                                size={14}
-                                className="fill-current"
-                            />
+                            <Sparkles size={14} className="fill-current animate-pulse" />
                         ) : (
                             <ChevronDown size={14} />
                         )}
                         <span>
-                            {hasNewMessages
-                                ? "查看新消息"
-                                : "回到最底部"}
+                            {hasNewMessages ? "查看新消息" : "回到最底部"}
                         </span>
                     </Button>
                 </div>
